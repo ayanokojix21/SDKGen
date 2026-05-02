@@ -215,14 +215,17 @@ async def init_graph() -> None:
 
     if settings.MONGODB_URI:
         try:
-            from langgraph.checkpoint.mongodb.aio import AsyncMongoDBSaver
-            _checkpointer = AsyncMongoDBSaver.from_conn_string(
-                conn_string=settings.MONGODB_URI,
+            from pymongo import MongoClient
+            from langgraph.checkpoint.mongodb import MongoDBSaver
+            
+            # Create a persistent MongoDB client for the application lifespan
+            client = MongoClient(settings.MONGODB_URI)
+            _checkpointer = MongoDBSaver(
+                client=client,
                 db_name=settings.MONGODB_DB_NAME,
                 checkpoint_collection_name=settings.CHECKPOINT_COLLECTION,
                 writes_collection_name=settings.WRITES_COLLECTION,
             )
-            await _checkpointer.__aenter__()
             log.info("MongoDB checkpointer connected (db=%s)", settings.MONGODB_DB_NAME)
         except Exception as exc:
             log.error("MongoDB checkpointer failed (%s) — falling back to InMemorySaver", exc)
@@ -239,6 +242,9 @@ async def init_graph() -> None:
 async def teardown_graph() -> None:
     """Called on FastAPI shutdown — closes MongoDB connection gracefully."""
     global _checkpointer
-    if _checkpointer and hasattr(_checkpointer, "__aexit__"):
+    if _checkpointer and hasattr(_checkpointer, "close"):
+        _checkpointer.close()
+        log.info("MongoDB checkpointer connection closed.")
+    elif _checkpointer and hasattr(_checkpointer, "__aexit__"):
         await _checkpointer.__aexit__(None, None, None)
         log.info("MongoDB checkpointer connection closed.")
