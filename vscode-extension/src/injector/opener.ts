@@ -20,15 +20,24 @@ export class Opener {
     const filename = language === 'typescript' ? 'client.ts' : 'client.py';
     const fileUri = vscode.Uri.joinPath(root, 'src', 'sdk', filename);
 
-    try {
-      await vscode.workspace.fs.stat(fileUri); // throws if not found
+    let found = false;
+    for (let i = 0; i < 5; i++) {
+      try {
+        await vscode.workspace.fs.stat(fileUri);
+        found = true;
+        break;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
+
+    if (found) {
       const doc = await vscode.workspace.openTextDocument(fileUri);
       await vscode.window.showTextDocument(doc, {
         viewColumn: vscode.ViewColumn.One,
         preview: false,
       });
-    } catch {
-      // File not present yet — silently skip
+    } else {
       console.warn(`[DocsToCode Opener] ${filename} not found at ${fileUri.fsPath}`);
     }
   }

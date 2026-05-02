@@ -55,7 +55,7 @@ Three-layer fallback — Chrome tries each in order:
 ```
 Chrome Extension
   └─ Layer 1: WebSocket ws://localhost:47291  (instant, preferred)
-  └─ Layer 2: vscode://docs-to-code.extension/generate?job_id=XXX
+  └─ Layer 2: vscode://docs-to-code-team.docs-to-code/generate?job_id=XXX
   └─ Layer 3: Clipboard (job_id copied) + banner shown
 ```
 

@@ -35,13 +35,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Wire WS new_job → URI handler (Chrome bridge Layer 1)
   wsServer.onNewJob((msg) => {
     const uri = vscode.Uri.parse(
-      `vscode://docs-to-code.extension/generate?job_id=${encodeURIComponent(msg.job_id)}&language=${encodeURIComponent(msg.language ?? 'python')}`
+      `vscode://docs-to-code-team.docs-to-code/generate?job_id=${encodeURIComponent(msg.job_id)}&language=${encodeURIComponent(msg.language ?? 'python')}`
     );
     handleUri(uri, context);
   });
 
   // ── 2. Register URI handler ────────────────────────────────────────────────
-  // Handles: vscode://docs-to-code.extension/generate?job_id=XXX
+  // Handles: vscode://docs-to-code-team.docs-to-code/generate?job_id=XXX
   const uriHandlerDisposable = vscode.window.registerUriHandler({
     handleUri(uri: vscode.Uri) {
       handleUri(uri, context);
@@ -93,7 +93,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const { job_id } = (await resp.json()) as { job_id: string };
         // Open the Agent Panel via URI handler
         const uri = vscode.Uri.parse(
-          `vscode://docs-to-code.extension/generate?job_id=${job_id}`
+          `vscode://docs-to-code-team.docs-to-code/generate?job_id=${job_id}`
         );
         handleUri(uri, context);
       } catch (err) {
@@ -114,7 +114,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!jobId) return;
 
       const uri = vscode.Uri.parse(
-        `vscode://docs-to-code.extension/generate?job_id=${jobId.trim()}`
+        `vscode://docs-to-code-team.docs-to-code/generate?job_id=${jobId.trim()}`
       );
       handleUri(uri, context);
     })

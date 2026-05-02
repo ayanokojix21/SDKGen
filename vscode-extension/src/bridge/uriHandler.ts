@@ -1,6 +1,6 @@
 /**
  * uriHandler.ts — Docs to Code VS Code Extension
- * Dev 4: Handles vscode://docs-to-code.extension/generate?job_id=XXX URIs.
+ * Dev 4: Handles vscode://docs-to-code-team.docs-to-code/generate?job_id=XXX URIs.
  *
  * Phase 3 full implementation:
  *   - Opens AgentPanel
@@ -16,6 +16,7 @@ import { Opener } from '../injector/opener';
 import { Narrator } from '../tts/narrator';
 import { refreshHistory } from '../extension';
 
+const EventSource = require('eventsource');
 const BACKEND_BASE = 'http://localhost:8000';
 
 // Per-job singletons (cleaned up on complete/error)
@@ -42,7 +43,6 @@ export function handleUri(uri: vscode.Uri, context: vscode.ExtensionContext): vo
 
   // ── 1. Open Agent Panel ───────────────────────────────────────────────────
   const panel = AgentPanel.createOrShow(context.extensionUri, jobId);
-  panel.postEvent({ type: 'supervisor', routing_to: 'researcher', reasoning: 'Starting…' });
 
   // ── 2. Create per-job helpers ─────────────────────────────────────────────
   fileWriters.set(jobId, new FileWriter());
@@ -50,8 +50,69 @@ export function handleUri(uri: vscode.Uri, context: vscode.ExtensionContext): vo
   openers.set(jobId, new Opener());
   narrators.set(jobId, new Narrator());
 
-  // ── 3. Connect SSE stream ─────────────────────────────────────────────────
-  connectSSE(jobId, language, context);
+  // ── 3. Try to restore a completed job first, then fall back to SSE ────────
+  tryRestoreCompletedJob(jobId, language, context).then((restored) => {
+    if (!restored) {
+      // Job is still running — connect to live SSE stream
+      panel.postEvent({ type: 'supervisor', routing_to: 'researcher', reasoning: 'Starting…' });
+      connectSSE(jobId, language, context);
+    }
+  });
+}
+
+/**
+ * Checks if the job already has files on the backend (completed job).
+ * If so, writes them directly to the workspace without SSE.
+ * Returns true if the job was restored, false if SSE should be used.
+ */
+async function tryRestoreCompletedJob(
+  jobId: string,
+  language: string,
+  _context: vscode.ExtensionContext
+): Promise<boolean> {
+  try {
+    const resp = await fetch(`${BACKEND_BASE}/download/${encodeURIComponent(jobId)}`, {
+      method: 'HEAD',
+    });
+
+    // 202 = still running, 404 = not found, 200 = files ready
+    if (resp.status !== 200) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
+  // Files are ready — fetch the state directly from the backend
+  const panel = AgentPanel.get(jobId);
+  panel?.postEvent({ type: 'supervisor', routing_to: 'packager', reasoning: 'Restoring completed job…' });
+
+  try {
+    const resp = await fetch(`${BACKEND_BASE}/job/${encodeURIComponent(jobId)}/files`);
+    if (!resp.ok) {
+      // Endpoint may not exist — fall back to SSE
+      return false;
+    }
+    const files = await resp.json() as Record<string, string>;
+    const fw = fileWriters.get(jobId);
+    const opener = openers.get(jobId);
+
+    for (const [filename, content] of Object.entries(files)) {
+      panel?.postEvent({ type: 'file_ready', filename });
+      if (fw) {
+        const written = await fw.write(filename, content);
+        if (written) panel?.confirmFileWritten(filename);
+      }
+    }
+
+    panel?.postEvent({ type: 'complete' });
+    if (opener) await opener.openMainFile(language);
+    refreshHistory();
+    cleanup(jobId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -67,17 +128,8 @@ function connectSSE(jobId: string, language: string, _context: vscode.ExtensionC
 
   const url = `${BACKEND_BASE}/generate/stream?job_id=${encodeURIComponent(jobId)}`;
 
-  // EventSource is available in VS Code extension host (Node 18+)
-  let es: EventSource;
-  try {
-    es = new EventSource(url);
-  } catch {
-    // Node may not have native EventSource — use polyfill approach
-    vscode.window.showWarningMessage(
-      '[Docs to Code] Could not connect to SSE stream. Is the backend running?'
-    );
-    return;
-  }
+  // We use the eventsource polyfill since Node.js 18 doesn't have native EventSource
+  const es = new EventSource(url);
 
   eventSources.set(jobId, es);
 
