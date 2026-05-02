@@ -54,6 +54,18 @@ class TokenTrackingCallback(AsyncCallbackHandler):
 _token_tracker = TokenTrackingCallback()
 
 
+def get_token_usage() -> dict:
+    """
+    Returns the current accumulated token usage and estimated cost.
+    Called by agent nodes to propagate tracking data into the LangGraph state,
+    which enables the Supervisor's $2 budget guard to function.
+    """
+    return {
+        "total_tokens": _token_tracker.total_tokens,
+        "estimated_cost_usd": round(_token_tracker.total_cost_usd, 6),
+    }
+
+
 def get_llm(temperature: float = 0.0, callbacks: Optional[list] = None):
     """
     Returns the primary LLM with fallbacks.
@@ -93,6 +105,7 @@ def get_llm(temperature: float = 0.0, callbacks: Optional[list] = None):
                     api_key=settings.GROQ_API_KEY,
                     temperature=temperature,
                     max_retries=1,
+                    callbacks=cbs,  # Track tokens on fallbacks too (BUG 23 fix)
                 )
             )
 
@@ -144,7 +157,7 @@ def get_structured_llm(schema: Type[BaseModel], temperature: float = 0.0):
                 api_key=settings.GROQ_API_KEY,
                 temperature=temperature,
                 max_retries=1,
-                callbacks=cbs if i == 0 else [],
+                callbacks=cbs,  
             )
             structured_models.append(llm.with_structured_output(schema))
 

@@ -56,6 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     - Teardown closes the MongoDB connection gracefully.
     """
     log.info("=== Docs-to-Code backend starting up ===")
+    settings.validate()
     await init_graph()
     log.info("=== Graph ready. Server accepting requests. ===")
     yield
@@ -286,7 +287,7 @@ async def get_job_files(job_id: str):
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Active WS connections: { connection_id: WebSocket }
-_ws_clients: dict[str, WebSocket] = {}
+_ws_clients: dict[int, WebSocket] = {}
 
 
 @app.websocket("/ws")

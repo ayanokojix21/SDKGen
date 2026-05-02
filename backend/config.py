@@ -42,6 +42,10 @@ class Settings:
         if not self.GOOGLE_API_KEY: missing.append("GOOGLE_API_KEY")
         if not self.MONGODB_URI: missing.append("MONGODB_URI")
         if not self.E2B_API_KEY: log.warning("E2B_API_KEY missing — sandboxing disabled.")
+        if not self.NOMIC_API_KEY: log.warning("NOMIC_API_KEY missing — vector embeddings will fail.")
+        if not self.COHERE_API_KEY: log.warning("COHERE_API_KEY missing — reranking disabled.")
+        if not self.SERPER_API_KEY or self.SERPER_API_KEY.startswith("your_"):
+            log.warning("SERPER_API_KEY missing or placeholder — web search disabled.")
         if missing:
             raise EnvironmentError(f"Missing required environment variables: {', '.join(missing)}")
 
