@@ -3,16 +3,37 @@ Architect Agent — Transforms Vector Store data into validated api_schema.
 """
 
 import logging
+from pathlib import Path
 from urllib.parse import urlparse
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
-from backend.llm import get_structured_llm
+from backend.llm import get_structured_llm, get_token_usage
 from backend.graph.schemas import ApiSchema
 from backend.tools.research_tools import query_docs
 from backend.tools.validate_schema import validate_schema
 
 logger = logging.getLogger(__name__)
 
-ARCHITECT_PROMPT = """
+# ── Load detailed prompt from disk ────────────────────────────────────────────
+_PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+
+
+def _load_architect_prompt() -> str:
+    """Load the architect prompt file."""
+    prompt_path = _PROMPTS_DIR / "architect.txt"
+    try:
+        text = prompt_path.read_text(encoding="utf-8")
+        logger.info("[architect] Loaded prompt from architect.txt (%d chars)", len(text))
+        return text
+    except FileNotFoundError:
+        logger.warning("[architect] architect.txt not found — using fallback")
+        return ""
+
+
+# Load once at module level
+_ARCHITECT_PROMPT_FILE = _load_architect_prompt()
+
+# Fallback used when .txt is missing
+_FALLBACK_PROMPT = """
 You are an API Architect. Your goal is to design a clean, correct API schema from documentation.
 You will be provided with relevant documentation snippets retrieved from a vector store.
 
@@ -24,17 +45,25 @@ Rules:
 5. CRITICAL: The base_url MUST be derived from the TARGET_URL provided. Do NOT use placeholder domains like 'vectorstore.com', 'example.com', or 'api.example.com'.
 6. If QA reports 404 errors for an endpoint, that endpoint is INVALID — remove it from the schema entirely.
 7. If QA reports 404 errors on every endpoint, the base_url itself is wrong — correct it to the TARGET_URL domain.
+8. Normalize auth types: bearer_token → bearer, token → bearer.
+9. Methods must be uppercase: GET, POST, PUT, PATCH, DELETE.
+10. Deduplicate endpoints: if two endpoints have the same method + path, keep the one with more detail.
+11. Path parameters must be required=true.
+12. GET/DELETE must NOT have request_body.
+13. Normalize parameter types: int → number, str → string, bool → boolean, float → number.
 """
 
 
 async def architect_node(state: dict) -> dict:
     """
     Architect node using RAG and Structured Output.
+    Now loads the detailed 248-line prompt from architect.txt.
     """
     job_id = state["job_id"]
     collection_name = state.get("vector_store_collection")
     instruction = state.get("instruction", "Generate the API schema")
     target_url = state.get("target_url", "")
+    language = state.get("language", "python")
 
     # Derive the expected base URL from the target URL so the LLM cannot hallucinate it
     expected_base_url = _derive_base_url(target_url)
@@ -55,6 +84,17 @@ async def architect_node(state: dict) -> dict:
     structured_llm = get_structured_llm(ApiSchema)
 
     sse_events = [{"type": "architect_validating", "context_length": len(context)}]
+
+    # Choose prompt: file prompt or fallback
+    prompt_text = _ARCHITECT_PROMPT_FILE or _FALLBACK_PROMPT
+
+    # Fill known placeholders from the .txt prompt file
+    prompt_text = (
+        prompt_text
+        .replace("{knowledge_base}", context[:8000])
+        .replace("{language}", language)
+        .replace("{instruction}", instruction)
+    )
 
     # Provide QA failure context if we're in a retry
     qa_failure_context = ""
@@ -77,7 +117,7 @@ async def architect_node(state: dict) -> dict:
 
     try:
         api_schema_obj: ApiSchema = await structured_llm.ainvoke([
-            SystemMessage(content=ARCHITECT_PROMPT),
+            SystemMessage(content=prompt_text),
             HumanMessage(content=human_msg)
         ])
 
@@ -110,6 +150,9 @@ async def architect_node(state: dict) -> dict:
             f"{len(schema_fixes)} auto-fixes applied. base_url={api_schema['base_url']}"
         )
 
+        # Propagate token tracking to state (BUG 5 fix)
+        token_usage = get_token_usage()
+
         return {
             "api_schema": api_schema,
             "schema_fixes": schema_fixes,
@@ -119,7 +162,8 @@ async def architect_node(state: dict) -> dict:
                 "type": "architect_done",
                 "endpoint_count": len(api_schema["endpoints"]),
                 "fixes_count": len(schema_fixes),
-            }]
+            }],
+            **token_usage,
         }
 
     except Exception as e:

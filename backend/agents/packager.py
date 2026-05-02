@@ -42,7 +42,7 @@ def _load_narrate_prompt() -> str:
 _NARRATE_PROMPT = _load_narrate_prompt()
 
 # ── LLM for narration (non-critical, higher temperature for natural speech) ───
-from backend.llm import get_llm
+from backend.llm import get_llm, get_token_usage
 
 _narrate_llm = None
 
@@ -173,12 +173,16 @@ async def packager_node(state: dict) -> dict:
         },
     })
 
+    # Propagate token tracking to state for consistency
+    token_usage = get_token_usage()
+
     return {
         "final_files": final_files,
         "narration_text": narration_text,
         "status": "success",
         "messages": [AIMessage(content=summary, name="packager")],
         "sse_events": sse_events,
+        **token_usage,
     }
 
 
