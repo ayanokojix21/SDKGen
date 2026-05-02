@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Docs to Code</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <!-- ── Header ─────────────────────────────────────────────────── -->
+  <header class="popup-header">
+    <div class="header-brand">
+      <span class="brand-bolt">⚡</span>
+      <span class="brand-name">docs<span class="brand-accent">-to-</span>code</span>
+    </div>
+    <div id="vs-code-badge" class="badge badge--disconnected" title="VS Code connection status">
+      <span class="badge-dot"></span>
+      <span class="badge-label">VS Code</span>
+    </div>
+  </header>
+
+  <!-- ── Form ───────────────────────────────────────────────────── -->
+  <section class="form-section">
+
+    <!-- URL input -->
+    <div class="field-group">
+      <label class="field-label" for="url-input">Documentation URL</label>
+      <div class="input-wrapper">
+        <input
+          id="url-input"
+          type="url"
+          class="url-input"
+          placeholder="https://jsonplaceholder.typicode.com/guide"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="paste-btn" class="icon-btn" title="Paste from clipboard">⎘</button>
+      </div>
+    </div>
+
+    <!-- Language toggle -->
+    <div class="field-group">
+      <label class="field-label">Language</label>
+      <div class="toggle-group" id="language-toggle" role="group" aria-label="Language selection">
+        <button class="toggle-btn toggle-btn--active" data-value="python" id="lang-python">Python</button>
+        <button class="toggle-btn" data-value="typescript" id="lang-typescript">TypeScript</button>
+      </div>
+    </div>
+
+    <!-- Output toggle -->
+    <div class="field-group">
+      <label class="field-label">Output</label>
+      <div class="toggle-group" id="output-toggle" role="group" aria-label="Output destination">
+        <button class="toggle-btn toggle-btn--active" data-value="vscode" id="out-vscode">VS Code</button>
+        <button class="toggle-btn" data-value="zip" id="out-zip">Download ZIP</button>
+      </div>
+    </div>
+
+    <!-- Generate button -->
+    <button id="generate-btn" class="generate-btn">
+      <span id="generate-btn-text">Generate SDK</span>
+      <span id="generate-spinner" class="spinner hidden" aria-hidden="true"></span>
+    </button>
+
+  </section>
+
+  <!-- ── Resume banner (shown if job was active when popup closed) ── -->
+  <div id="resume-banner" class="resume-banner hidden">
+    <span class="resume-icon">↻</span>
+    <span id="resume-text">Job in progress — <button id="resume-btn" class="link-btn">resume</button></span>
+    <button id="resume-dismiss" class="icon-btn" title="Dismiss">✕</button>
+  </div>
+
+  <!-- ── Backend not running banner ────────────────────────────── -->
+  <div id="backend-banner" class="error-banner hidden">
+    <span>⚠ Backend not running.</span>
+    <code id="backend-cmd" class="copy-cmd" title="Click to copy">uvicorn main:app --reload</code>
+    <span id="cmd-copied" class="copy-confirm hidden">Copied!</span>
+  </div>
+
+  <!-- ── Terminal log ───────────────────────────────────────────── -->
+  <div class="terminal-wrapper">
+    <div class="terminal-header">
+      <span class="terminal-label">agent log</span>
+      <button id="clear-log-btn" class="icon-btn" title="Clear log">✕</button>
+    </div>
+    <div id="terminal-log" class="terminal-log" role="log" aria-live="polite" aria-label="Agent activity log">
+      <div class="terminal-placeholder">
+        <span class="placeholder-bolt">⚡</span>
+        <span>Ready. Enter a docs URL and hit Generate.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Bottom bar ─────────────────────────────────────────────── -->
+  <footer class="bottom-bar">
+    <div class="bottom-left">
+      <label class="narrate-toggle" title="Read narration aloud">
+        <input type="checkbox" id="narrate-toggle" />
+        <span class="narrate-slider"></span>
+        <span class="narrate-label">🔊 Narrate</span>
+      </label>
+    </div>
+    <div class="bottom-right">
+      <button id="download-btn" class="action-btn" disabled>⬇ ZIP</button>
+      <button id="open-vscode-btn" class="action-btn action-btn--primary" disabled>↗ VS Code</button>
+    </div>
+  </footer>
+
+  <script src="../lib/tts.js"></script>
+  <script src="../lib/api.js"></script>
+  <script src="../lib/bridge.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
