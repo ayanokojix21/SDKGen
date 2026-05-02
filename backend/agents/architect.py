@@ -1,207 +1,222 @@
 """
+backend/agents/architect.py
+────────────────────────────
 Architect Agent — Transforms knowledge_base into validated api_schema.
 
-Takes the Researcher's raw knowledge_base and normalizes it into a clean,
-structured api_schema that the Engineer can directly consume. Runs the
-Gemma-optimized prompt, then applies deterministic post-validation via
-validate_schema to catch and auto-fix structural issues.
+Responsibilities
+─────────────────
+1. Load the Gemma-optimized architect prompt
+2. Call Gemini with knowledge_base → get raw api_schema JSON
+3. Run deterministic validate_schema() for post-validation + auto-fixes
+4. If validation has critical errors → retry LLM once with error context
+5. Emit SSE events for each phase
+
+Self-correction
+────────────────
+• validate_schema auto-fixes trivial issues (trailing slashes, missing full_url,
+  undeclared path params, body on GET)
+• If critical errors remain after auto-fix → one LLM retry with error feedback
+• If still broken → return schema as-is with errors logged (let QA catch the rest)
 """
 
+from __future__ import annotations
+
+import asyncio
 import json
 import logging
+import re
 from pathlib import Path
 
-from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+from backend.config import settings
+from backend.graph.state import emit_sse
 from backend.tools.validate_schema import validate_schema
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
-# Load prompt once at module level
+# ── Load prompt once at import time ───────────────────────────────────────────
 _PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "architect.txt"
-_ARCHITECT_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
 
+def _load_prompt() -> str:
+    try:
+        return _PROMPT_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        log.warning("architect.txt not found — using minimal fallback")
+        return _FALLBACK_PROMPT
+
+_FALLBACK_PROMPT = """\
+You are an API schema architect. Convert the knowledge_base into a clean api_schema.
+Return ONLY valid JSON with: api_name, base_url, auth, endpoints[].
+Each endpoint needs: name (snake_case), method, path, full_url, description,
+headers, query_params, path_params, body, response.
+
+KNOWLEDGE BASE:
+{knowledge_base}
+"""
+
+# ── LLM singleton ─────────────────────────────────────────────────────────────
+_llm = ChatGoogleGenerativeAI(
+    model=settings.GEMINI_MODEL,
+    google_api_key=settings.GOOGLE_API_KEY,
+    temperature=0.1,
+    max_retries=0,
+)
+
+MAX_RETRIES = 2  # initial + 1 retry with error context
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Architect node
+# ──────────────────────────────────────────────────────────────────────────────
 
 async def architect_node(state: dict) -> dict:
     """
-    Architect agent node for the LangGraph graph.
-
-    Transforms knowledge_base → api_schema with LLM + deterministic validation.
+    LangGraph node — transforms knowledge_base → validated api_schema.
+    Returns a partial state update dict.
     """
-    sse_events = []
-    messages = []
-    schema_fixes: list[str] = []
-
-    knowledge_base = state.get("knowledge_base", {})
+    knowledge_base = state.get("knowledge_base")
     language = state.get("language", "python")
-    supervisor_instruction = _get_last_supervisor_instruction(state.get("messages", []))
+    instruction = state.get("instruction", "Generate the API schema")
 
     if not knowledge_base:
-        logger.warning("Architect: no knowledge_base — returning empty schema")
-        messages.append(AIMessage(
-            content="No knowledge base available — cannot generate schema.",
-            name="architect",
-        ))
+        log.warning("[architect] empty knowledge_base — skipping")
         return {
             "api_schema": None,
             "schema_fixes": [],
-            "messages": messages,
-            "sse_events": [{
-                "type": "agent_warn",
-                "message": "Architect received empty knowledge_base",
-            }],
+            "messages": [AIMessage(content="No knowledge base available.", name="architect")],
+            **emit_sse("architect_skip", reason="empty knowledge_base"),
         }
 
-    sse_events.append({
-        "type": "architect_start",
-        "endpoint_count": len(knowledge_base.get("endpoints_raw", [])),
-    })
+    endpoint_count = len(knowledge_base.get("endpoints_raw", []))
+    log.info("[architect] starting — %d raw endpoints", endpoint_count)
 
-    # ── LLM Call: knowledge_base → api_schema ────────────────────────────
-    prompt = _ARCHITECT_PROMPT.replace(
-        "{knowledge_base}", json.dumps(knowledge_base, indent=2)
-    )
+    # ── Build prompt ──────────────────────────────────────────────────────────
+    base_prompt = _load_prompt()
+    prompt = base_prompt.replace("{knowledge_base}", json.dumps(knowledge_base, indent=2))
     prompt = prompt.replace("{language}", language)
-    prompt = prompt.replace("{instruction}", supervisor_instruction or "Generate the API schema")
+    prompt = prompt.replace("{instruction}", instruction)
 
-    try:
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            temperature=0.1,
-        )
+    # ── LLM call with validation + self-correction retry ──────────────────────
+    api_schema = None
+    schema_fixes: list[str] = []
+    validation_errors: list[str] = []
+    last_error = ""
 
-        response = await llm.ainvoke([
-            SystemMessage(content=prompt),
-            HumanMessage(content="Transform this knowledge_base into an api_schema. Return JSON only."),
-        ])
+    for attempt in range(1, MAX_RETRIES + 1):
+        human_msg = "Transform this knowledge_base into an api_schema. Return JSON only."
+        if attempt > 1 and validation_errors:
+            human_msg = (
+                "Your previous schema had validation errors. Fix them:\n\n"
+                + "\n".join(f"- {e}" for e in validation_errors)
+                + "\n\nReturn corrected JSON only. No explanation."
+            )
 
-        api_schema = _parse_schema(response.content)
+        try:
+            response = await _llm.ainvoke([
+                SystemMessage(content=prompt),
+                HumanMessage(content=human_msg),
+            ])
+            raw = _extract_text(response)
+            api_schema = _parse_json(raw)
+        except json.JSONDecodeError as exc:
+            last_error = f"JSON parse error (attempt {attempt}): {exc}"
+            log.warning("[architect] %s — raw=%r", last_error, raw[:200] if 'raw' in dir() else "N/A")
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(2)
+                continue
+            break
+        except Exception as exc:
+            last_error = f"LLM error (attempt {attempt}): {exc}"
+            log.error("[architect] %s", last_error)
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(2)
+                continue
+            break
 
-    except Exception as e:
-        logger.error(f"Architect LLM call failed: {e}")
-        messages.append(AIMessage(
-            content=f"Architect failed to generate schema: {e}",
-            name="architect",
-        ))
-        sse_events.append({
-            "type": "agent_error",
-            "agent": "architect",
-            "error": str(e),
-        })
-        return {
-            "api_schema": None,
-            "schema_fixes": [],
-            "messages": messages,
-            "sse_events": sse_events,
-        }
+        if api_schema is None:
+            continue
 
+        # ── Ensure required top-level fields ──────────────────────────────────
+        api_schema.setdefault("endpoints", [])
+        api_schema.setdefault("base_url", "")
+        api_schema.setdefault("auth", {"type": "none", "location": "none", "key_name": None})
+        api_schema.setdefault("api_name", knowledge_base.get("api_name", "Unknown API"))
+
+        # ── Deterministic post-validation ─────────────────────────────────────
+        validation = validate_schema(api_schema)
+        api_schema = validation["schema"]
+        schema_fixes = validation["fixes"]
+        validation_errors = validation["errors"]
+
+        if not validation_errors:
+            log.info("[architect] schema valid on attempt %d (%d auto-fixes)", attempt, len(schema_fixes))
+            break
+
+        log.warning("[architect] attempt %d: %d validation errors — %s",
+                     attempt, len(validation_errors), validation_errors[:3])
+
+    # ── Handle total failure ──────────────────────────────────────────────────
     if api_schema is None:
-        logger.error("Architect: Failed to parse LLM output as JSON")
-        messages.append(AIMessage(
-            content="Architect failed to parse LLM response as valid JSON.",
-            name="architect",
-        ))
+        log.error("[architect] failed to produce schema: %s", last_error)
         return {
             "api_schema": None,
             "schema_fixes": [],
-            "messages": messages,
-            "sse_events": sse_events,
+            "messages": [AIMessage(content=f"Architect failed: {last_error}", name="architect")],
+            **emit_sse("architect_error", error=last_error),
         }
 
-    # ── Deterministic Post-Validation ────────────────────────────────────
-    validation = validate_schema(api_schema)
-    api_schema = validation["schema"]
-    schema_fixes = validation["fixes"]
-
-    if validation["errors"]:
-        logger.warning(
-            f"Architect: Schema has {len(validation['errors'])} validation errors: "
-            f"{validation['errors']}"
-        )
-        sse_events.append({
-            "type": "architect_validation_warnings",
-            "errors": validation["errors"],
-            "fixes": schema_fixes,
-        })
-
-    if schema_fixes:
-        sse_events.append({
-            "type": "architect_auto_fixes",
-            "fixes": schema_fixes,
-        })
-
-    # ── Build completion message ─────────────────────────────────────────
-    endpoint_count = len(api_schema.get("endpoints", []))
+    # ── Build result ──────────────────────────────────────────────────────────
+    ep_count = len(api_schema.get("endpoints", []))
+    auth_type = api_schema.get("auth", {}).get("type", "unknown")
     fix_count = len(schema_fixes)
-    error_count = len(validation["errors"])
+    err_count = len(validation_errors)
 
     summary = (
-        f"API schema generated: {endpoint_count} endpoints normalized. "
-        f"Auth: {api_schema.get('auth', {}).get('type', 'unknown')}. "
-        f"{fix_count} auto-fixes applied, {error_count} validation errors."
+        f"API schema generated: {ep_count} endpoints, auth={auth_type}. "
+        f"{fix_count} auto-fixes, {err_count} validation errors."
     )
+    log.info("[architect] %s", summary)
 
-    messages.append(AIMessage(content=summary, name="architect"))
-
-    sse_events.append({
-        "type": "architect_done",
-        "endpoint_count": endpoint_count,
-        "fix_count": fix_count,
-        "valid": validation["valid"],
-    })
-
-    logger.info(f"Architect: {summary}")
+    # Merge SSE events
+    sse_update = emit_sse(
+        "architect_done",
+        endpoint_count=ep_count,
+        auth_type=auth_type,
+        auto_fixes=fix_count,
+        validation_errors=err_count,
+        valid=err_count == 0,
+    )
 
     return {
         "api_schema": api_schema,
         "schema_fixes": schema_fixes,
-        "messages": messages,
-        "sse_events": sse_events,
+        "messages": [AIMessage(content=summary, name="architect")],
+        **sse_update,
     }
 
 
-def _parse_schema(content: str) -> dict | None:
-    """Parse the Architect LLM response into an api_schema dict."""
-    text = content.strip()
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────────
 
-    # Strip markdown fences
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-    if text.endswith("```"):
-        text = text[:-3]
-    text = text.strip()
+def _extract_text(response) -> str:
+    """Safely extract string content from LangChain AIMessage."""
+    content = response.content
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = [p["text"] for p in content if isinstance(p, dict) and "text" in p]
+        return " ".join(parts).strip()
+    return str(content).strip()
 
-    try:
-        schema = json.loads(text)
-    except json.JSONDecodeError:
-        logger.error(f"Failed to parse schema JSON: {text[:300]}...")
+
+def _parse_json(raw: str) -> dict | None:
+    """Strip markdown fences and parse JSON."""
+    cleaned = re.sub(r"^```[a-z]*\n?", "", raw, flags=re.MULTILINE)
+    cleaned = re.sub(r"\n?```$", "", cleaned, flags=re.MULTILINE)
+    result = json.loads(cleaned.strip())
+    if not isinstance(result, dict):
         return None
-
-    # Basic structural validation
-    if not isinstance(schema, dict):
-        logger.error(f"Schema is not a dict: {type(schema).__name__}")
-        return None
-
-    # Ensure required top-level fields
-    if "endpoints" not in schema:
-        schema["endpoints"] = []
-    if "base_url" not in schema:
-        schema["base_url"] = ""
-    if "auth" not in schema:
-        schema["auth"] = {"type": "none", "location": "none", "key_name": "", "example": ""}
-    if "api_name" not in schema:
-        schema["api_name"] = "Unknown API"
-
-    return schema
-
-
-def _get_last_supervisor_instruction(messages: list) -> str | None:
-    """Extract the last supervisor instruction from message history."""
-    for msg in reversed(messages):
-        if hasattr(msg, "name") and msg.name == "supervisor":
-            content = msg.content
-            if ":" in content:
-                return content.split(":", 1)[1].strip()
-            return content
-    return None
+    return result

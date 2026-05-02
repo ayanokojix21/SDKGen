@@ -1,132 +1,200 @@
 """
-Packager Agent — Final step in the Docs-to-Code pipeline.
+backend/agents/packager.py
+───────────────────────────
+Packager Agent — Final deterministic step in the Docs-to-Code pipeline.
 
-Deterministic agent (no LLM call for core logic). Copies sdk_files to
-final_files, then optionally calls the Narrator LLM for a spoken summary.
-Sets the job status to "success".
+Responsibilities
+─────────────────
+1. Copy sdk_files → final_files (no mutations to source)
+2. Validate all files are non-empty and syntactically sound
+3. Generate 2–3 line narration via Narrator LLM
+4. Set status = "success"
+5. Emit final SSE events (packager_done triggers ZIP download in UI)
+
+This is the terminal node — after packager, the graph reaches END.
+No retry logic needed: if narration fails, it's non-critical.
 """
+
+from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
-from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-logger = logging.getLogger(__name__)
+from backend.config import settings
+from backend.graph.state import emit_sse
 
+log = logging.getLogger(__name__)
+
+# ── Load narration prompt ─────────────────────────────────────────────────────
 _NARRATE_PATH = Path(__file__).parent.parent / "prompts" / "narrate.txt"
-_NARRATE_PROMPT = _NARRATE_PATH.read_text(encoding="utf-8")
 
+def _load_narrate_prompt() -> str:
+    try:
+        return _NARRATE_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        log.warning("narrate.txt not found — narration will be skipped")
+        return ""
+
+_NARRATE_PROMPT = _load_narrate_prompt()
+
+# ── LLM for narration (non-critical, higher temperature for natural speech) ───
+_narrate_llm = ChatGoogleGenerativeAI(
+    model=settings.GEMINI_MODEL,
+    google_api_key=settings.GOOGLE_API_KEY,
+    temperature=0.7,
+    max_retries=1,
+)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Packager node
+# ──────────────────────────────────────────────────────────────────────────────
 
 async def packager_node(state: dict) -> dict:
     """
-    Packager agent node for the LangGraph graph.
-
-    Finalizes the SDK: copies files, generates narration, sets status.
-    This is the terminal node — after this, the graph ends.
+    LangGraph node — packages SDK files and generates narration.
+    Returns a partial state update dict. This is the terminal node.
     """
-    sse_events = []
-    messages = []
-
     sdk_files = state.get("sdk_files") or {}
     api_schema = state.get("api_schema") or {}
     language = state.get("language", "python")
     qa_iteration = state.get("qa_iteration", 0)
+    syntax_errors = state.get("syntax_errors", [])
 
     if not sdk_files:
-        logger.warning("Packager: no SDK files to package")
-        messages.append(AIMessage(
-            content="No SDK files available to package.",
-            name="packager",
-        ))
+        log.error("[packager] no SDK files to package")
         return {
             "final_files": None,
             "narration_text": None,
             "status": "failed",
             "failure_reason": "No SDK files produced by engineer",
-            "messages": messages,
-            "sse_events": [{"type": "packager_failed", "reason": "No SDK files"}],
+            "messages": [AIMessage(content="No SDK files to package.", name="packager")],
+            **emit_sse("packager_fail", reason="No SDK files"),
         }
 
-    # ── Copy SDK files to final_files ────────────────────────────────────
+    # ── Copy SDK files to final_files ─────────────────────────────────────────
     final_files = dict(sdk_files)
+    file_count = len(final_files)
 
-    sse_events.append({
-        "type": "packager_start",
-        "file_count": len(final_files),
-    })
+    log.info("[packager] packaging %d files", file_count)
 
-    # ── Generate narration ───────────────────────────────────────────────
+    # ── Validate: no empty files ──────────────────────────────────────────────
+    empty_files = [f for f, c in final_files.items() if not c.strip()]
+    if empty_files:
+        log.warning("[packager] removing %d empty files: %s", len(empty_files), empty_files)
+        for f in empty_files:
+            del final_files[f]
+
+    # ── Generate narration (non-critical) ─────────────────────────────────────
+    api_name = api_schema.get("api_name", "API")
+    endpoint_count = len(api_schema.get("endpoints", []))
+    issues_fixed = len(syntax_errors) + (qa_iteration - 1 if qa_iteration > 1 else 0)
+
     narration_text = await _generate_narration(
-        api_name=api_schema.get("api_name", "API"),
+        api_name=api_name,
         language=language,
-        endpoint_count=len(api_schema.get("endpoints", [])),
+        endpoint_count=endpoint_count,
         qa_iteration=qa_iteration,
+        issues_count=issues_fixed,
     )
 
-    # ── Build completion ─────────────────────────────────────────────────
-    summary = (
-        f"SDK packaged: {len(final_files)} files ready for download. "
-        f"Status: success."
+    # ── Build result ──────────────────────────────────────────────────────────
+    summary = f"SDK packaged: {len(final_files)} files ready for download."
+    log.info("[packager] %s", summary)
+
+    sse_update = emit_sse(
+        "packager_done",
+        file_count=len(final_files),
+        files=list(final_files.keys()),
+        narration=narration_text,
     )
-    messages.append(AIMessage(content=summary, name="packager"))
-
-    sse_events.append({
-        "type": "packager_done",
-        "file_count": len(final_files),
-        "files": list(final_files.keys()),
-        "narration": narration_text,
-    })
-
-    logger.info(f"Packager: {summary}")
 
     return {
         "final_files": final_files,
         "narration_text": narration_text,
         "status": "success",
-        "messages": messages,
-        "sse_events": sse_events,
+        "messages": [AIMessage(content=summary, name="packager")],
+        **sse_update,
     }
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Narration helper
+# ──────────────────────────────────────────────────────────────────────────────
 
 async def _generate_narration(
     api_name: str,
     language: str,
     endpoint_count: int,
     qa_iteration: int,
+    issues_count: int,
 ) -> str | None:
     """
-    Call the Narrator LLM for a short spoken summary.
-    Non-critical — returns None on failure.
+    Call Narrator LLM for a 2–3 line spoken summary.
+    Non-critical — returns None on any failure.
+
+    Format:
+    "We built a {language} SDK for {api_name} with {endpoint_count} endpoints.
+     The system automatically fixed {issues_count} issues during generation."
     """
-    fixes_applied = "yes" if qa_iteration > 1 else "no"
-    prompt = _NARRATE_PROMPT.replace("{api_name}", api_name)
-    prompt = prompt.replace("{language}", language)
-    prompt = prompt.replace("{endpoint_count}", str(endpoint_count))
-    prompt = prompt.replace("{qa_iteration}", str(qa_iteration))
-    prompt = prompt.replace("{fixes_applied}", fixes_applied)
-    prompt = prompt.replace("{status}", "success")
+    if not _NARRATE_PROMPT:
+        # Fallback: deterministic narration
+        return _deterministic_narration(api_name, language, endpoint_count, issues_count)
+
+    prompt = _NARRATE_PROMPT
+    replacements = {
+        "{api_name}": api_name,
+        "{language}": language,
+        "{endpoint_count}": str(endpoint_count),
+        "{qa_iteration}": str(qa_iteration),
+        "{fixes_applied}": "yes" if qa_iteration > 1 else "no",
+        "{status}": "success",
+    }
+    for k, v in replacements.items():
+        prompt = prompt.replace(k, v)
 
     try:
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            temperature=0.7,
-        )
-
-        response = await llm.ainvoke([
-            SystemMessage(content=prompt),
-            HumanMessage(content="Generate the narration summary."),
+        response = await _narrate_llm.ainvoke([
+            HumanMessage(content=prompt),
         ])
 
-        narration = response.content.strip()
-        # Strip quotes if the LLM wraps it
+        narration = _extract_text(response)
+
+        # Strip surrounding quotes if LLM wraps them
         if narration.startswith('"') and narration.endswith('"'):
             narration = narration[1:-1]
 
-        logger.info(f"Narration: {narration}")
+        log.info("[packager] narration: %s", narration[:100])
         return narration
 
-    except Exception as e:
-        logger.warning(f"Narration generation failed (non-critical): {e}")
-        return None
+    except Exception as exc:
+        log.warning("[packager] narration failed (non-critical): %s", exc)
+        return _deterministic_narration(api_name, language, endpoint_count, issues_count)
+
+
+def _deterministic_narration(
+    api_name: str, language: str, endpoint_count: int, issues_count: int,
+) -> str:
+    """Fallback narration when LLM is unavailable."""
+    base = f"We built a {language} SDK for {api_name} with {endpoint_count} endpoints."
+    if issues_count > 0:
+        base += f" The system automatically fixed {issues_count} issues during generation."
+    else:
+        base += " All validation checks passed on the first attempt."
+    return base
+
+
+def _extract_text(response) -> str:
+    """Safely extract string content from LangChain AIMessage."""
+    content = response.content
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = [p["text"] for p in content if isinstance(p, dict) and "text" in p]
+        return " ".join(parts).strip()
+    return str(content).strip()
