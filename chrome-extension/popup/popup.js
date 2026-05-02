@@ -78,39 +78,7 @@ const cmdCopied       = document.getElementById('cmd-copied');
 const pasteBtn        = document.getElementById('paste-btn');
 
 const assistantSection= document.getElementById('assistant-section');
-const askSdkBtn       = document.getElementById('ask-sdk-btn');
-const assistantStatus = document.getElementById('assistant-status');
-const askSdkText      = document.getElementById('ask-sdk-text');
-
-let isAssistantActive = false;
-
-if (askSdkBtn) {
-  askSdkBtn.addEventListener('click', async () => {
-    if (isAssistantActive) {
-      await window.convAi.stopConversation();
-      isAssistantActive = false;
-      askSdkBtn.classList.remove('active');
-      askSdkText.textContent = 'Ask about this SDK';
-      assistantStatus.textContent = '';
-    } else {
-      try {
-        askSdkBtn.disabled = true;
-        assistantStatus.textContent = 'Connecting...';
-        await window.convAi.startConversation((mode) => {
-          assistantStatus.textContent = mode === 'speaking' ? 'Agent is speaking...' : 'Listening...';
-        });
-        isAssistantActive = true;
-        askSdkBtn.classList.add('active');
-        askSdkText.textContent = 'Stop Assistant';
-      } catch (err) {
-        assistantStatus.textContent = 'Error connecting.';
-        console.error(err);
-      } finally {
-        askSdkBtn.disabled = false;
-      }
-    }
-  });
-}
+const elevenlabsWidget= document.getElementById('elevenlabs-widget');
 
 // ─── Initialise ───────────────────────────────────────────────────────────────
 async function init() {
@@ -434,7 +402,7 @@ chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
 
     if (evtType === 'packager_done') {
       if (data.assistant_agent_id) {
-        window.convAi.setAgentId(data.assistant_agent_id);
+        elevenlabsWidget.setAttribute('agent-id', data.assistant_agent_id);
         assistantSection.classList.remove('hidden');
       }
     }

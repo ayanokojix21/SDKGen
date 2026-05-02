@@ -100,11 +100,8 @@
       <span class="assistant-title">SDK Assistant</span>
     </div>
     <div class="assistant-body">
-      <button id="ask-sdk-btn" class="ask-sdk-btn">
-        <span class="mic-icon">🎤</span>
-        <span id="ask-sdk-text">Ask about this SDK</span>
-      </button>
-      <span id="assistant-status" class="assistant-status"></span>
+      <!-- The official ElevenLabs widget will be injected/configured here -->
+      <elevenlabs-convai id="elevenlabs-widget" agent-id=""></elevenlabs-convai>
     </div>
   </div>
 
@@ -123,7 +120,7 @@
     </div>
   </footer>
 
-  <script src="../lib/convai.bundle.js"></script>
+  <script src="../lib/convai-widget-embed.js"></script>
   <script src="../lib/tts.js"></script>
   <script src="../lib/api.js"></script>
   <script src="../lib/bridge.js"></script>
