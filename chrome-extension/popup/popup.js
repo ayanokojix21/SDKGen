@@ -90,6 +90,9 @@ async function init() {
 
   // 4. Check for in-progress job and replay buffered events
   await checkResumeState();
+
+  // 5. Check Microphone permission for ElevenLabs
+  await checkMicPermission();
 }
 
 // ─── URL auto-fill ────────────────────────────────────────────────────────────
@@ -628,6 +631,45 @@ async function forwardToOverlay(event) {
       chrome.tabs.sendMessage(tab.id, { type: 'UPDATE_OVERLAY', event });
     }
   } catch (_) {}
+}
+
+// ─── Microphone Permission Check ──────────────────────────────────────────────
+async function checkMicPermission() {
+  try {
+    const status = await navigator.permissions.query({ name: 'microphone' });
+    if (status.state === 'prompt' || status.state === 'denied') {
+      showMicBanner();
+    }
+    status.onchange = () => {
+      if (status.state === 'granted') hideMicBanner();
+    };
+  } catch (e) {
+    // Some browsers/environments might not support this query
+  }
+}
+
+function showMicBanner() {
+  if (document.getElementById('mic-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'mic-banner';
+  banner.className = 'error-banner';
+  banner.style.display = 'flex';
+  banner.style.justifyContent = 'space-between';
+  banner.style.alignItems = 'center';
+  banner.innerHTML = `
+    <span>🎙 Mic permission needed for AI Assistant.</span>
+    <button id="grant-mic-btn" class="action-btn action-btn--primary" style="margin: 0; padding: 4px 8px; font-size: 11px;">Allow Access</button>
+  `;
+  document.body.insertBefore(banner, document.body.firstChild);
+  
+  document.getElementById('grant-mic-btn').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
+  });
+}
+
+function hideMicBanner() {
+  const banner = document.getElementById('mic-banner');
+  if (banner) banner.remove();
 }
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Docs to Code - Microphone Access</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 60px 40px;
+      text-align: center;
+      background: #0f172a;
+      color: #f8fafc;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 24px; margin-bottom: 10px; }
+    p { color: #94a3b8; line-height: 1.5; margin-bottom: 30px; }
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #8b5cf6;
+      border: none;
+      border-radius: 8px;
+      color: white;
+      transition: all 0.2s;
+    }
+    button:hover { background: #7c3aed; }
+    #status { margin-top: 20px; font-weight: 500; }
+    .success { color: #10b981; }
+    .error { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>Microphone Access Required</h1>
+  <p>The AI Assistant widget needs microphone access to hear your voice. Please click the button below and click <strong>Allow</strong> in the browser prompt.</p>
+  
+  <button id="grant-btn">Allow Microphone Access</button>
+  <p id="status"></p>
+
+  <script src="options.js"></script>
+</body>
+</html>

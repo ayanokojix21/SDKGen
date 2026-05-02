@@ -51,7 +51,7 @@ const dtcBridge = {
    * @param {string} jobId
    */
   openInVSCode(jobId) {
-    const uri = `vscode://docs-to-code.extension/generate?job_id=${encodeURIComponent(jobId)}`;
+    const uri = `vscode://docs-to-code-team.docs-to-code/generate?job_id=${encodeURIComponent(jobId)}`;
     window.open(uri);
   },
 
@@ -75,7 +75,7 @@ const dtcBridge = {
 
   _trySendViaURI(jobId, language) {
     try {
-      const uri = `vscode://docs-to-code.extension/generate?job_id=${encodeURIComponent(jobId)}&language=${encodeURIComponent(language)}`;
+      const uri = `vscode://docs-to-code-team.docs-to-code/generate?job_id=${encodeURIComponent(jobId)}&language=${encodeURIComponent(language)}`;
       window.open(uri);
       return true;
     } catch {
