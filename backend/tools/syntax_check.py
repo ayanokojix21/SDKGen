@@ -68,6 +68,7 @@ def _check_brackets(content: str, filename: str) -> list[str]:
 
     return errors
 
+import os
 import tempfile
 import subprocess
 

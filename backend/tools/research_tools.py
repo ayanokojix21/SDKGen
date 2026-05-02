@@ -48,12 +48,12 @@ async def chunk_and_index(url: str, content: str, collection_name: str):
     vector_store.add_documents(chunks)
     logger.info(f"Indexed {len(chunks)} chunks for {url}")
 
-async def query_docs(query: str, collection_name: str, k: int = 10) -> List[Document]:
+async def query_docs(query: str, collection_name: str, k: int = 100) -> List[Document]:
     """
     Performs vector search + Cohere reranking.
     """
     vector_store = get_vector_store(collection_name)
-    base_retriever = vector_store.as_retriever(search_kwargs={"k": k * 2}) # Get more for reranking
+    base_retriever = vector_store.as_retriever(search_kwargs={"k": k})
     
     if not os.environ.get("COHERE_API_KEY"):
         logger.warning("COHERE_API_KEY missing, skipping rerank")
@@ -76,7 +76,18 @@ async def serper_search(query: str) -> str:
     
     search = GoogleSerperAPIWrapper()
     try:
-        return await search.arun(query)
+        results = await search.aresults(query)
+        # Safely extract snippets from organic results or answer box
+        snippets = []
+        if "answerBox" in results and "snippet" in results["answerBox"]:
+            snippets.append(results["answerBox"]["snippet"])
+        if "organic" in results:
+            snippets.extend([res.get("snippet", "") for res in results["organic"] if "snippet" in res])
+            
+        if not snippets:
+            return "Search completed but no relevant organic snippets were found."
+            
+        return "\n\n".join(snippets)
     except Exception as e:
         logger.error(f"Serper search failed: {e}")
         return f"Search failed: {str(e)}"
