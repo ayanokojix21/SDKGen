@@ -28,13 +28,13 @@ Requirements:
 - Create a class named `{ApiName}Client` (PascalCase derived from api_name)
 - Constructor accepts: `config: ClientConfig` where ClientConfig is an interface with `baseUrl: string`, `apiKey: string`, `timeout?: number`
 - Store auth credentials and inject them into every request based on the auth config
-- One async method per endpoint, named using the endpoint's `name` field (camelCase)
-- Method signature must include all required params as positional args and optional params in an options object
-- Path parameters must be interpolated into the URL path using template literals
-- Query parameters must be appended to the URL using `URLSearchParams`
-- Body parameters must be passed as `JSON.stringify(body)` with `Content-Type: application/json`
+- One async method per endpoint, named using the endpoint's `name` field (snake_case from api_schema)
+- Method signature: all `path_params` and required `query_params` as positional args, optional `query_params` in an options object
+- Path parameters (from `path_params`) must be interpolated into the URL path using template literals
+- Query parameters (from `query_params`) must be appended to the URL using `URLSearchParams`
+- Body (from `body` field, only for POST/PUT/PATCH) must be passed as `JSON.stringify(body)` with `Content-Type: application/json`
 - Every method must have a JSDoc comment with the endpoint description
-- Every method must return `Promise<Response>` or a typed response if response schema is available
+- Every method must return `Promise<Response>` or a typed response if the `response` field is available in the schema
 - Include error handling: throw an error on non-ok responses with status code and body
 - Strict TypeScript types on all parameters and return values
 - No placeholder code — every method must be fully implemented

@@ -28,11 +28,11 @@ Requirements:
 - Create a class named `{ApiName}Client` (PascalCase derived from api_name)
 - Constructor accepts: `base_url: str = "{base_url}"`, `api_key: str = ""`, `timeout: float = 30.0`
 - Store auth credentials and inject them into every request based on the auth config
-- One method per endpoint, named using the endpoint's `name` field (snake_case)
-- Method signature must include all required params as positional args and optional params as keyword args with defaults
-- Path parameters must be interpolated into the URL path
-- Query parameters must be passed as `params` dict to httpx
-- Body parameters must be passed as `json` dict to httpx
+- One method per endpoint, named using the endpoint's `name` field (snake_case from api_schema)
+- Method signature: all `path_params` and required `query_params` as positional args, optional `query_params` as keyword args with defaults
+- Path parameters (from `path_params`) must be interpolated into the URL path
+- Query parameters (from `query_params`) must be passed as `params` dict to httpx
+- Body (from `body` field, only for POST/PUT/PATCH) must be passed as `json` dict to httpx
 - Every method must have a docstring with the endpoint description
 - Every method must return `httpx.Response`
 - Include proper error handling: raise `httpx.HTTPStatusError` on 4xx/5xx
