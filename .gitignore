@@ -1,0 +1,36 @@
+# Environment
+.env
+.env.*
+*.env
+!.env.example
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+
+# Runtime
+backend/jobs/*
+!backend/jobs/.gitkeep
+examples/*
+!examples/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
