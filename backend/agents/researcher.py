@@ -66,8 +66,9 @@ async def researcher_node(state: dict) -> dict:
         scraped_this_run.append({"url": p.url, "scraped_at": "now"})
         sse_events.append({"type": "researcher_scraped", "url": p.url, "char_count": result["char_count"]})
 
+    import re
     # ── Optional: Serper Search (if instruction looks like it needs live data) ──
-    if supervisor_instruction and ("latest" in supervisor_instruction.lower() or "search" in supervisor_instruction.lower()):
+    if supervisor_instruction and re.search(r'\b(latest|search)\b', supervisor_instruction.lower()):
         sse_events.append({"type": "researcher_serper", "query": supervisor_instruction})
         search_result = await serper_search(supervisor_instruction)
         await chunk_and_index("google_search", search_result, collection_name)

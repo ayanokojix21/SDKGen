@@ -20,6 +20,9 @@ class Settings:
 
     # ── Sandbox ───────────────────────────────────────────────────────────────
     E2B_API_KEY: str = os.getenv("E2B_API_KEY", "")
+    
+    # ── External Services ─────────────────────────────────────────────────────
+    ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
 
     # ── Persistence ───────────────────────────────────────────────────────────
     MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "sdkgen")

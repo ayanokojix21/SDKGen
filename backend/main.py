@@ -187,10 +187,12 @@ async def stream_generation(request: Request, job_id: str):
                     break
 
                 try:
-                    event: dict = await asyncio.wait_for(q.get(), timeout=30.0)
+                    event: dict = await asyncio.wait_for(q.get(), timeout=15.0)
                 except asyncio.TimeoutError:
-                    # Send a keep-alive comment so the connection doesn't time out
-                    yield {"comment": "keep-alive"}
+                    # Send an actual event so the Chrome Extension service worker's
+                    # JS listener fires, resetting its 30-second idle timer.
+                    # SSE comments alone do not prevent MV3 SW suspension.
+                    yield {"data": json.dumps({"type": "ping"})}
                     continue
 
                 if event.get("type") == "__done__":

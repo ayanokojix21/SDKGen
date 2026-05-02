@@ -59,7 +59,9 @@ LANGUAGE: {language}
         human_msg += f"\n\nDOCUMENTATION CONTEXT:\n{context}"
 
     if state.get("sdk_files") and state.get("test_results"):
-        human_msg += f"\n\nPREVIOUS SDK FILES: {state['sdk_files']}\nTEST RESULTS: {state['test_results']}"
+        human_msg += f"\n\nPREVIOUS TEST RESULTS (from QA): {state['test_results']}"
+    if state.get("syntax_errors"):
+        human_msg += f"\n\nPREVIOUS SYNTAX ERRORS (fix ALL of these): {state['syntax_errors']}"
 
     try:
         sdk_obj: GeneratedSdk = await structured_llm.ainvoke([
@@ -103,9 +105,17 @@ LANGUAGE: {language}
             "syntax_errors": len(syntax_errors),
         })
 
+        # If no syntax errors this run, reset the iteration counter so future
+        # QA-triggered cycles get a fresh allowance of retries
+        new_engineer_iteration = (
+            0 if not syntax_errors
+            else state.get("engineer_iteration", 0) + 1
+        )
+
         return {
             "sdk_files": sdk_files,
             "syntax_errors": syntax_errors,
+            "engineer_iteration": new_engineer_iteration,
             "messages": [AIMessage(content=summary, name="engineer")],
             "sse_events": sse_events,
         }

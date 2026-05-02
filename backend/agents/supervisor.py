@@ -18,12 +18,15 @@ The team:
 5. Packager: Finalizes and delivers files.
 
 Rules:
-- Route to Researcher if info is missing or QA fails due to documentation gaps.
-- Route to Architect if the schema is missing or needs fixing.
-- Route to Engineer if code is missing or has syntax errors.
-- Route to QA Tester if the SDK is ready for verification.
-- Route to Packager only when the SDK is verified or you decide to give up.
+- Route to Researcher if info is completely missing from vector store.
+- Route to Architect if the schema is missing, needs fixing, or QA reports hallucinated/invalid endpoints (e.g. 404s). If 'Architect Iteration' >= 2, stop retrying and route to Engineer instead.
+- Route to Engineer if code is missing or has syntax errors in the SDK files. If 'Engineer Iteration' >= 3, stop retrying and route to QA instead.
+- Route to QA Tester if the SDK is ready for verification (no syntax errors, or engineer has retried enough times).
+- Route to Packager when QA recommends 'proceed' or when QA reports all tests passed.
 - Use 'end' to stop the process.
+
+CRITICAL — HTTP status codes: A POST endpoint returning 201 is CORRECT and is NOT a failure.
+Any 2xx response (200-299) means the live HTTP test passed. Do NOT route to Engineer or Architect for 201 responses from POST endpoints.
 """
 
 # Agents in the "forward" direction of the pipeline — used for reroute detection
