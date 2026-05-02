@@ -174,7 +174,7 @@ async def stream_generation(request: Request, job_id: str):
     - The graph finishes (sentinel received)
     - The client disconnects (CancelledError / GeneratorExit caught)
     """
-    q = job_manager.get_queue(job_id)
+    q = job_manager.subscribe(job_id)
     if q is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
 
@@ -205,9 +205,8 @@ async def stream_generation(request: Request, job_id: str):
 
         except (asyncio.CancelledError, GeneratorExit):
             log.info("[sse] generator cancelled for job=%s", job_id)
-            # We DO NOT remove the queue here. If the user closed the popup, 
-            # they might reopen it and reconnect to the same job_id. 
-            # The queue will be cleaned up by the runner task after completion.
+        finally:
+            job_manager.unsubscribe(job_id, q)
 
     return EventSourceResponse(event_generator())
 

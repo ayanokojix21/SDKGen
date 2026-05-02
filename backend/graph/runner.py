@@ -101,7 +101,7 @@ async def run_graph(job_id: str, initial_state: dict) -> None:
             await asyncio.sleep(30)
         except asyncio.CancelledError:
             pass  # Server shutting down — clean up immediately
-        job_manager.remove_queue(job_id)
+        job_manager.remove_all_queues(job_id)
         log.info("[runner] cleaned up queue for job=%s", job_id)
 
 # ──────────────────────────────────────────────────────────────────────────────
