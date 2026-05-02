@@ -1,0 +1,77 @@
+{
+  "name": "docs-to-code",
+  "displayName": "Docs to Code",
+  "description": "Turn any API documentation URL into a fully typed, live-verified SDK — delivered directly into your workspace.",
+  "version": "1.0.0",
+  "publisher": "docs-to-code-team",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["sdk", "api", "docs", "ai", "codegen"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "icon": "icons/icon128.png",
+  "contributes": {
+    "commands": [
+      {
+        "command": "docs-to-code.generate",
+        "title": "Docs to Code: Generate SDK",
+        "category": "Docs to Code"
+      },
+      {
+        "command": "docs-to-code.resume",
+        "title": "Docs to Code: Resume Job",
+        "category": "Docs to Code"
+      },
+      {
+        "command": "docs-to-code.history",
+        "title": "Docs to Code: Show Job History",
+        "category": "Docs to Code"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "docs-to-code.historyView",
+          "name": "SDK Gen History",
+          "when": "true"
+        }
+      ]
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "docs-to-code.generate"
+        },
+        {
+          "command": "docs-to-code.resume"
+        },
+        {
+          "command": "docs-to-code.history"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.3.3",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
