@@ -60,6 +60,7 @@ async def _playwright_scrape(url: str) -> dict:
     and returns cleaned text content.
     """
     browser = None
+    p = None
     try:
         p = await async_playwright().start()
         browser = await p.chromium.launch(headless=True)
@@ -143,6 +144,8 @@ async def _playwright_scrape(url: str) -> dict:
     finally:
         if browser:
             await browser.close()
+        if p:
+            await p.stop()
 
 
 def _urls_match(url1: str, url2: str) -> bool:

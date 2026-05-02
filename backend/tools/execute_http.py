@@ -21,7 +21,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────
-_ALLOWED_METHODS = {"GET", "POST"}
+_ALLOWED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 _TIMEOUT_SECONDS = 10.0
 _USER_AGENT = "docs-to-code-qa/1.0"
 _MAX_RESPONSE_BODY = 500  # chars
@@ -91,7 +91,7 @@ async def execute_http_request(
                 url=url,
                 headers=req_headers,
                 params=params,
-                json=body if method == "POST" and body else None,
+                json=body if method in ("POST", "PUT", "PATCH") and body else None,
             )
 
         latency_ms = int((time.time() - start) * 1000)

@@ -47,12 +47,41 @@ async def check_syntax(files: dict[str, str], language: str) -> list[dict]:
 
 
 def _check_brackets(content: str, filename: str) -> list[str]:
-    """Basic bracket/brace/paren balance check."""
+    """Basic bracket/brace/paren balance check that skips string literals and comments."""
     stack = []
     pairs = {')': '(', ']': '[', '}': '{'}
     errors = []
+    i = 0
+    length = len(content)
 
-    for i, ch in enumerate(content):
+    while i < length:
+        ch = content[i]
+
+        # Skip single-line comments
+        if ch == '/' and i + 1 < length and content[i + 1] == '/':
+            while i < length and content[i] != '\n':
+                i += 1
+            continue
+
+        # Skip multi-line comments
+        if ch == '/' and i + 1 < length and content[i + 1] == '*':
+            i += 2
+            while i + 1 < length and not (content[i] == '*' and content[i + 1] == '/'):
+                i += 1
+            i += 2  # skip past */
+            continue
+
+        # Skip string literals (single, double, backtick)
+        if ch in ('"', "'", '`'):
+            quote = ch
+            i += 1
+            while i < length and content[i] != quote:
+                if content[i] == '\\':
+                    i += 1  # skip escaped character
+                i += 1
+            i += 1  # skip closing quote
+            continue
+
         if ch in '([{':
             stack.append((ch, i))
         elif ch in ')]}':
@@ -62,6 +91,8 @@ def _check_brackets(content: str, filename: str) -> list[str]:
                 errors.append(f"Mismatched '{ch}' at position {i}")
             else:
                 stack.pop()
+
+        i += 1
 
     for ch, pos in stack:
         errors.append(f"Unclosed '{ch}' at position {pos}")
