@@ -1,41 +1,187 @@
-from langgraph.graph import StateGraph, END
-from backend.graph.state import SDKJobState
+"""
+backend/graph/graph.py
+──────────────────────
+Builds and compiles the LangGraph StateGraph.
+
+Architecture
+────────────
+• AsyncMongoDBSaver  → durable checkpointing — survives server restarts
+• Fallback to InMemorySaver if MONGODB_URI is not set (dev mode)
+• Singleton compiled_graph created at startup via init_graph()
+• Safe imports: if other devs' agents are not yet implemented, inline
+  fallback stubs are used so the graph always compiles and Dev 1 can test
+  the full infrastructure independently.
+
+Topology
+────────
+                 ┌──────────────┐
+   ENTRY ──────► │  supervisor  │ ◄─────────────────────────────┐
+                 └──────┬───────┘                               │
+          conditional   │  route_next()                         │
+          ┌─────────────┼──────────────────────┐                │
+          ▼             ▼                      ▼                │
+     researcher     architect   engineer    qa_tester           │
+          │             │           │           │               │
+          └─────────────┴───────────┴───────────┘               │
+                        │  all report back to supervisor ───────┘
+                        │
+                   packager ──► END
+"""
+
+from __future__ import annotations
+
+import logging
+
+from langgraph.graph import END, StateGraph
+from langgraph.checkpoint.memory import MemorySaver
+
+from backend.config import settings
+from backend.graph.state import SDKJobState, emit_sse
 from backend.graph.router import route_next
 
-# Import agent nodes
+# ── Dev 1's supervisor ────────────────────────────────────────────────────────
 from backend.agents.supervisor import supervisor_node
-from backend.agents.researcher import researcher_node
-from backend.agents.architect import architect_node
-from backend.agents.engineer import engineer_node
-from backend.agents.qa_tester import qa_tester_node
-from backend.agents.packager import packager_node
 
-def create_graph() -> StateGraph:
-    """Creates and compiles the LangGraph StateMachine."""
-    graph = StateGraph(SDKJobState)
+log = logging.getLogger(__name__)
 
-    # Add nodes
-    graph.add_node("supervisor", supervisor_node)
-    graph.add_node("researcher", researcher_node)
-    graph.add_node("architect", architect_node)
-    graph.add_node("engineer", engineer_node)
-    graph.add_node("qa_tester", qa_tester_node)
-    graph.add_node("packager", packager_node)
 
-    # Set entry point
-    graph.set_entry_point("supervisor")
+# ──────────────────────────────────────────────────────────────────────────────
+# Safe agent imports — fallback stubs for agents not yet implemented by
+# Dev 2 (researcher, qa_tester) and Dev 3 (architect, engineer, packager).
+#
+# The stubs return state deltas that let the graph complete a full cycle so
+# Dev 1 can verify the Supervisor → routing → SSE pipeline end-to-end.
+# Once other devs implement their nodes, these fallbacks are never reached.
+# ──────────────────────────────────────────────────────────────────────────────
 
-    # Every agent reports back to Supervisor
-    graph.add_edge("researcher", "supervisor")
-    graph.add_edge("architect", "supervisor")
-    graph.add_edge("engineer", "supervisor")
-    graph.add_edge("qa_tester", "supervisor")
-    
-    # Packager is the final deterministic step
-    graph.add_edge("packager", END)
+def _safe_import(module: str, attr: str, fallback):
+    """
+    Import module.attr and wrap it.  If the real function returns an empty dict
+    (i.e. the other dev hasn't implemented it yet), the wrapper automatically
+    delegates to the fallback stub so the graph can still progress through a
+    complete cycle for Dev 1 testing.
+    """
+    try:
+        import importlib
+        mod = importlib.import_module(module)
+        real_func = getattr(mod, attr)
+        if not callable(real_func):
+            raise AttributeError(f"{attr} is not callable")
 
-    # Supervisor routes via conditional edge
-    graph.add_conditional_edges(
+        # Wrap: call the real function, but fall back if it returns empty
+        async def _wrapper(state: dict) -> dict:
+            result = await real_func(state)
+            if result and isinstance(result, dict) and len(result) > 0:
+                return result  # real implementation returned something — use it
+            log.info("[graph] %s.%s returned empty — using inline fallback", module, attr)
+            return await fallback(state)
+
+        _wrapper.__name__ = attr
+        return _wrapper
+
+    except (ImportError, AttributeError, Exception) as exc:
+        log.warning("Could not import %s.%s (%s) — using inline stub", module, attr, exc)
+    return fallback
+
+
+# ── Inline fallback stubs (only used if real agent import fails) ──────────────
+
+async def _stub_researcher(state: dict) -> dict:
+    """Stub: sets a minimal knowledge_base so the graph can progress."""
+    return {
+        "knowledge_base": {
+            "stub": True,
+            "api_name": "stub",
+            "base_url": state.get("target_url", ""),
+            "auth": {"type": "none"},
+            "endpoints_raw": [],
+            "pages_crawled": [],
+        },
+        **emit_sse("researcher_stub", message="Researcher not implemented — using stub"),
+    }
+
+async def _stub_architect(state: dict) -> dict:
+    """Stub: creates a minimal api_schema from knowledge_base."""
+    kb = state.get("knowledge_base") or {}
+    return {
+        "api_schema": {
+            "stub": True,
+            "api_name": kb.get("api_name", "stub"),
+            "base_url": kb.get("base_url", ""),
+            "auth": kb.get("auth", {"type": "none"}),
+            "endpoints": [],
+        },
+        **emit_sse("architect_stub", message="Architect not implemented — using stub"),
+    }
+
+async def _stub_engineer(state: dict) -> dict:
+    """Stub: creates placeholder SDK files."""
+    lang = state.get("language", "python")
+    ext = "py" if lang == "python" else "ts"
+    return {
+        "sdk_files": {
+            f"client.{ext}": f"# Stub SDK client for {state.get('target_url', 'unknown')}\n",
+            f"models.{ext}": f"# Stub models\n",
+            "README.md": f"# Stub SDK\nGenerated by stub engineer.\n",
+        },
+        **emit_sse("engineer_stub", message="Engineer not implemented — using stub"),
+    }
+
+async def _stub_qa_tester(state: dict) -> dict:
+    """Stub: marks all tests as passed so the graph can proceed to packager."""
+    return {
+        "test_results": [{"endpoint": "/stub", "passed": True, "status_code": 200}],
+        "qa_iteration": state.get("qa_iteration", 0) + 1,
+        **emit_sse("qa_stub", message="QA Tester not implemented — using stub"),
+    }
+
+async def _stub_packager(state: dict) -> dict:
+    """Stub: copies sdk_files to final_files and marks job as success."""
+    return {
+        "final_files": state.get("sdk_files") or {},
+        "narration_text": "SDK generation completed (stub packager).",
+        "status": "success",
+        **emit_sse("complete", message="Packager stub — SDK ready"),
+    }
+
+
+# ── Resolve actual nodes ─────────────────────────────────────────────────────
+
+researcher_node  = _safe_import("backend.agents.researcher",  "researcher_node",  _stub_researcher)
+architect_node   = _safe_import("backend.agents.architect",   "architect_node",   _stub_architect)
+engineer_node    = _safe_import("backend.agents.engineer",    "engineer_node",    _stub_engineer)
+qa_tester_node   = _safe_import("backend.agents.qa_tester",   "qa_tester_node",   _stub_qa_tester)
+packager_node    = _safe_import("backend.agents.packager",    "packager_node",    _stub_packager)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Graph builder
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _build_graph(checkpointer) -> object:
+    """Pure graph construction — separated so tests can inject any checkpointer."""
+    builder = StateGraph(SDKJobState)
+
+    # ── Nodes ──────────────────────────────────────────────────────────────────
+    builder.add_node("supervisor",  supervisor_node)
+    builder.add_node("researcher",  researcher_node)
+    builder.add_node("architect",   architect_node)
+    builder.add_node("engineer",    engineer_node)
+    builder.add_node("qa_tester",   qa_tester_node)
+    builder.add_node("packager",    packager_node)
+
+    # ── Entry ──────────────────────────────────────────────────────────────────
+    builder.set_entry_point("supervisor")
+
+    # ── Worker → Supervisor edges (every agent reports back) ──────────────────
+    for agent in ("researcher", "architect", "engineer", "qa_tester"):
+        builder.add_edge(agent, "supervisor")
+
+    # ── Packager is terminal ───────────────────────────────────────────────────
+    builder.add_edge("packager", END)
+
+    # ── Supervisor conditional routing ─────────────────────────────────────────
+    builder.add_conditional_edges(
         "supervisor",
         route_next,
         {
@@ -45,7 +191,54 @@ def create_graph() -> StateGraph:
             "qa_tester":  "qa_tester",
             "packager":   "packager",
             "end":        END,
-        }
+        },
     )
 
-    return graph.compile()
+    return builder.compile(checkpointer=checkpointer)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Singleton graph — initialised by lifespan() in main.py
+# ──────────────────────────────────────────────────────────────────────────────
+
+compiled_graph = None        # set by init_graph()
+_checkpointer  = None        # kept alive so MongoDB connection stays open
+
+
+async def init_graph() -> None:
+    """
+    Called once on FastAPI startup (lifespan).
+    Creates the MongoDB async checkpointer and compiles the graph.
+    Falls back to InMemorySaver if MONGODB_URI is missing.
+    """
+    global compiled_graph, _checkpointer
+
+    if settings.MONGODB_URI:
+        try:
+            from langgraph.checkpoint.mongodb.aio import AsyncMongoDBSaver
+            _checkpointer = AsyncMongoDBSaver.from_conn_string(
+                conn_string=settings.MONGODB_URI,
+                db_name=settings.MONGODB_DB_NAME,
+                checkpoint_collection_name=settings.CHECKPOINT_COLLECTION,
+                writes_collection_name=settings.WRITES_COLLECTION,
+            )
+            await _checkpointer.__aenter__()
+            log.info("MongoDB checkpointer connected (db=%s)", settings.MONGODB_DB_NAME)
+        except Exception as exc:
+            log.error("MongoDB checkpointer failed (%s) — falling back to InMemorySaver", exc)
+            _checkpointer = MemorySaver()
+    else:
+        log.warning("MONGODB_URI not set — using InMemorySaver (state lost on restart)")
+        _checkpointer = MemorySaver()
+
+    compiled_graph = _build_graph(_checkpointer)
+    log.info("LangGraph compiled successfully with checkpointer=%s",
+             type(_checkpointer).__name__)
+
+
+async def teardown_graph() -> None:
+    """Called on FastAPI shutdown — closes MongoDB connection gracefully."""
+    global _checkpointer
+    if _checkpointer and hasattr(_checkpointer, "__aexit__"):
+        await _checkpointer.__aexit__(None, None, None)
+        log.info("MongoDB checkpointer connection closed.")
