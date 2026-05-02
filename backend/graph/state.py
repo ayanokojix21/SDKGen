@@ -2,13 +2,7 @@
 backend/graph/state.py
 ──────────────────────
 Single source of truth for the LangGraph multi-agent system.
-
-Design principles
-─────────────────
-• All fields typed explicitly — no untyped dicts at graph boundaries.
-• Annotated reducers used only where append semantics are needed
-  (messages, sse_events, schema_fixes, syntax_errors).
-• Helper functions here so agents import ONE module, not many.
+Updated for Token Tracking, MongoDB Vector Search, and Structured Outputs.
 """
 
 from __future__ import annotations
@@ -16,76 +10,112 @@ from __future__ import annotations
 import json
 import operator
 from datetime import datetime, timezone
-from typing import Annotated, Optional, Sequence
+from typing import Annotated, Optional, Sequence, TypedDict
 
 from langchain_core.messages import BaseMessage
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Core State
-# ──────────────────────────────────────────────────────────────────────────────
-
-class SDKJobState(dict):
+class SDKJobState(TypedDict):
     """
-    LangGraph state TypedDict (expressed as a plain dict subclass so the type
-    checker can validate field access while LangGraph can use it natively).
-
-    Field groups:
-      - Job metadata      (immutable after create_initial_state)
-      - Researcher        (populated by agents/researcher.py)
-      - Architect         (populated by agents/architect.py)
-      - Engineer          (populated by agents/engineer.py)
-      - QA Tester         (populated by agents/qa_tester.py)
-      - Packager          (populated by agents/packager.py)
-      - Routing / control (managed by supervisor.py + router.py)
-      - SSE event queue   (append-only, consumed by FastAPI /generate/stream)
+    LangGraph state TypedDict.
     """
 
-    # ── Conversation (append-only) ────────────────────────────────────────────
+    # ── Conversation ──────────────────────────────────────────────────────────
     messages: Annotated[Sequence[BaseMessage], operator.add]
 
     # ── Job metadata ──────────────────────────────────────────────────────────
     job_id: str
     target_url: str
     language: str                  # "python" | "typescript"
-    page_content: str              # landing page text injected by Chrome extension
-    page_links: list[dict]         # [{"text":"Auth","href":"/docs/auth","inNav":True}]
+    page_content: str              # landing page text
+    page_links: list[dict]         # [{"text":"Auth","href":"...","inNav":True}]
 
-    # ── Researcher outputs ────────────────────────────────────────────────────
+    # ── Token & Cost Tracking ─────────────────────────────────────────────────
+    total_tokens: int
+    estimated_cost_usd: float
+
+    # ── Researcher & RAG ──────────────────────────────────────────────────────
     crawl_plan: Optional[list[dict]]     # [{url, reason, priority}]
-    crawled_pages: Optional[list[dict]]  # [{url, content, scraped_at}]
-    knowledge_base: Optional[dict]       # structured research output (see researcher prompt)
+    crawled_pages: Optional[list[dict]]  # [{url, scraped_at}]
+    # Vector store reference - instead of holding ALL page content in state
+    vector_store_collection: Optional[str]
+    # Small structured snippets for the Supervisor to see
+    research_summary: Optional[str]
 
     # ── Architect outputs ─────────────────────────────────────────────────────
-    api_schema: Optional[dict]           # validated endpoint schema
-    schema_fixes: Annotated[list[str], operator.add]  # auto-fixes log
+    api_schema: Optional[dict]           # Pydantic-validated endpoint schema
+    schema_fixes: Annotated[list[str], operator.add]
 
     # ── Engineer outputs ──────────────────────────────────────────────────────
     sdk_files: Optional[dict]            # {"client.py": "...", "models.py": "..."}
     syntax_errors: Annotated[list[str], operator.add]
 
     # ── QA Tester outputs ─────────────────────────────────────────────────────
-    test_results: Optional[list[dict]]   # [{endpoint, method, status_code, passed, ...}]
+    test_results: Optional[list[dict]]
     qa_iteration: int
 
     # ── Packager outputs ──────────────────────────────────────────────────────
-    final_files: Optional[dict]          # linted, delivery-ready files
+    final_files: Optional[dict]
     narration_text: Optional[str]
 
     # ── Routing & control ─────────────────────────────────────────────────────
-    next_agent: str                      # set by supervisor
-    instruction: str                     # specific directive for the next agent
-    iteration_count: int                 # total graph hops — ceiling: MAX_ITERATIONS
+    next_agent: str
+    instruction: str
+    iteration_count: int
     status: str                          # "running" | "success" | "failed"
     failure_reason: Optional[str]
 
-    # ── SSE event queue (append-only, piped by runner.py → asyncio.Queue) ────
+    # ── SSE event queue ───────────────────────────────────────────────────────
     sse_events: Annotated[list[dict], operator.add]
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Factories & Helpers
-# ──────────────────────────────────────────────────────────────────────────────
+def emit_sse(type_: str, **kwargs) -> dict:
+    """Helper to format SSE events."""
+    return {"sse_events": [{"type": type_, **kwargs}]}
+
+
+def build_state_summary(state: dict) -> str:
+    """
+    Builds a concise text summary of the current state for the Supervisor.
+    The Supervisor uses this to decide routing.
+    """
+    lines = [
+        f"Job ID: {state.get('job_id', 'unknown')}",
+        f"Target URL: {state.get('target_url', 'unknown')}",
+        f"Language: {state.get('language', 'unknown')}",
+        f"Status: {state.get('status', 'unknown')}",
+        f"Iteration: {state.get('iteration_count', 0)}",
+        f"QA Iteration: {state.get('qa_iteration', 0)}",
+        f"Tokens Used: {state.get('total_tokens', 0)}",
+        f"Estimated Cost: ${state.get('estimated_cost_usd', 0.0):.4f}",
+    ]
+
+    if state.get("research_summary"):
+        lines.append(f"Research Summary: {state['research_summary'][:500]}")
+    if state.get("api_schema"):
+        ep_count = len(state["api_schema"].get("endpoints", []))
+        lines.append(f"API Schema: {ep_count} endpoints defined")
+    if state.get("sdk_files"):
+        lines.append(f"SDK Files: {list(state['sdk_files'].keys())}")
+    if state.get("syntax_errors"):
+        lines.append(f"Syntax Errors: {state['syntax_errors']}")
+    if state.get("test_results"):
+        lines.append(f"Test Results: {state['test_results']}")
+    if state.get("failure_reason"):
+        lines.append(f"Failure Reason: {state['failure_reason']}")
+
+    # Last few messages for context
+    msgs = state.get("messages", [])
+    if msgs:
+        last_msgs = msgs[-3:]
+        lines.append("Recent Messages:")
+        for m in last_msgs:
+            name = getattr(m, "name", "unknown")
+            content = m.content[:200] if hasattr(m, "content") else str(m)[:200]
+            lines.append(f"  [{name}]: {content}")
+
+    return "\n".join(lines)
+
 
 def create_initial_state(
     job_id: str,
@@ -93,113 +123,45 @@ def create_initial_state(
     language: str,
     page_content: str,
     page_links: list[dict],
-) -> dict:
-    """
-    Returns the fully-initialised state dict for a new job.
-    Pass this directly to compiled_graph.ainvoke / astream_events.
-    """
+) -> SDKJobState:
     return {
-        # Conversation
         "messages": [],
-
-        # Job metadata
         "job_id": job_id,
         "target_url": target_url,
         "language": language,
         "page_content": page_content,
         "page_links": page_links,
+        
+        "total_tokens": 0,
+        "estimated_cost_usd": 0.0,
 
-        # Researcher
         "crawl_plan": None,
         "crawled_pages": None,
-        "knowledge_base": None,
+        "vector_store_collection": None,
+        "research_summary": None,
 
-        # Architect
         "api_schema": None,
         "schema_fixes": [],
 
-        # Engineer
         "sdk_files": None,
         "syntax_errors": [],
 
-        # QA Tester
         "test_results": None,
         "qa_iteration": 0,
 
-        # Packager
         "final_files": None,
         "narration_text": None,
 
-        # Routing
         "next_agent": "supervisor",
         "instruction": "Begin SDK generation.",
         "iteration_count": 0,
         "status": "running",
         "failure_reason": None,
 
-        # SSE queue
         "sse_events": [
             _make_event("job_started", job_id=job_id, url=target_url, language=language)
         ],
     }
-
-
-def build_state_summary(state: dict) -> str:
-    """
-    Concise JSON summary of state for the Supervisor LLM.
-    Includes enough context for the Supervisor to make correct routing decisions,
-    including failure details and QA failure breakdown.
-    """
-    # Summarise test_results for the supervisor
-    qa_summary: dict = {}
-    if state.get("test_results") is not None:
-        results: list[dict] = state["test_results"]
-        passed  = sum(1 for r in results if r.get("passed"))
-        failed  = len(results) - passed
-        failures = [
-            {"endpoint": r.get("endpoint"), "status_code": r.get("status_code"),
-             "error": r.get("error")}
-            for r in results if not r.get("passed")
-        ]
-        qa_summary = {
-            "passed": passed,
-            "failed": failed,
-            "total": len(results),
-            "failure_details": failures[:5],  # cap at 5 to avoid bloating prompt
-        }
-
-    summary = {
-        "job_id":           state.get("job_id"),
-        "target_url":       state.get("target_url"),
-        "language":         state.get("language"),
-        "status":           state.get("status"),
-        "iteration_count":  state.get("iteration_count"),
-        "qa_iteration":     state.get("qa_iteration"),
-        # Boolean flags — what's been completed
-        "has_crawl_plan":      state.get("crawl_plan")    is not None,
-        "has_knowledge_base":  state.get("knowledge_base") is not None,
-        "has_api_schema":      state.get("api_schema")    is not None,
-        "has_sdk_files":       state.get("sdk_files")     is not None,
-        "has_test_results":    state.get("test_results")  is not None,
-        "has_final_files":     state.get("final_files")   is not None,
-        # Detail for fix routing
-        "schema_fixes":        state.get("schema_fixes", []),
-        "syntax_errors":       state.get("syntax_errors", []),
-        "qa_summary":          qa_summary,
-        "failure_reason":      state.get("failure_reason"),
-        "last_instruction":    state.get("instruction"),
-    }
-    return json.dumps(summary, indent=2, default=str)
-
-
-def emit_sse(event_type: str, **kwargs) -> dict:
-    """
-    Returns a **partial state update** dict that appends ONE SSE event.
-    Usage inside any agent node:
-        return {**emit_sse("researcher_start", page_count=4), "crawl_plan": plan}
-    """
-    return {"sse_events": [_make_event(event_type, **kwargs)]}
-
 
 def _make_event(event_type: str, **kwargs) -> dict:
     return {
