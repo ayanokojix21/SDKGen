@@ -1,0 +1,20 @@
+{
+  "name": "chrome-extension",
+  "version": "1.0.0",
+  "description": "Turns API documentation pages into fully-typed SDKs in under 60 seconds.",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@elevenlabs/client": "^1.4.0",
+    "esbuild": "^0.28.0"
+  }
+}
