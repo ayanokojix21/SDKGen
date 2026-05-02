@@ -43,7 +43,15 @@ _NARRATE_PROMPT = _load_narrate_prompt()
 
 # ── LLM for narration (non-critical, higher temperature for natural speech) ───
 from backend.llm import get_llm
-_narrate_llm = get_llm(temperature=0.7)
+
+_narrate_llm = None
+
+def _get_narrate_llm():
+    """Lazy-initialize the narration LLM to avoid import-time API key errors."""
+    global _narrate_llm
+    if _narrate_llm is None:
+        _narrate_llm = get_llm(temperature=0.7)
+    return _narrate_llm
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -154,7 +162,7 @@ async def _generate_narration(
         prompt = prompt.replace(k, v)
 
     try:
-        response = await _narrate_llm.ainvoke([
+        response = await _get_narrate_llm().ainvoke([
             HumanMessage(content=prompt),
         ])
 

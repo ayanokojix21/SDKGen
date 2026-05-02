@@ -1,217 +1,85 @@
 """
-backend/agents/architect.py
-────────────────────────────
-Architect Agent — Transforms knowledge_base into validated api_schema.
-
-Responsibilities
-─────────────────
-1. Load the Gemma-optimized architect prompt
-2. Call Gemini with knowledge_base → get raw api_schema JSON
-3. Run deterministic validate_schema() for post-validation + auto-fixes
-4. If validation has critical errors → retry LLM once with error context
-5. Emit SSE events for each phase
-
-Self-correction
-────────────────
-• validate_schema auto-fixes trivial issues (trailing slashes, missing full_url,
-  undeclared path params, body on GET)
-• If critical errors remain after auto-fix → one LLM retry with error feedback
-• If still broken → return schema as-is with errors logged (let QA catch the rest)
+Architect Agent — Transforms Vector Store data into validated api_schema.
 """
 
-from __future__ import annotations
-
-import asyncio
-import json
 import logging
-import re
-from pathlib import Path
-
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-
-from backend.config import settings
-from backend.graph.state import emit_sse
+import json
+from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
+from backend.llm import get_structured_llm
+from backend.graph.schemas import ApiSchema
+from backend.tools.research_tools import query_docs
 from backend.tools.validate_schema import validate_schema
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
-# ── Load prompt once at import time ───────────────────────────────────────────
-_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "architect.txt"
+ARCHITECT_PROMPT = """
+You are an API Architect. Your goal is to design a clean, correct API schema from documentation.
+You will be provided with relevant documentation snippets retrieved from a vector store.
 
-def _load_prompt() -> str:
-    try:
-        return _PROMPT_PATH.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        log.warning("architect.txt not found — using minimal fallback")
-        return _FALLBACK_PROMPT
-
-_FALLBACK_PROMPT = """\
-You are an API schema architect. Convert the knowledge_base into a clean api_schema.
-Return ONLY valid JSON with: api_name, base_url, auth, endpoints[].
-Each endpoint needs: name (snake_case), method, path, full_url, description,
-headers, query_params, path_params, body, response.
-
-KNOWLEDGE BASE:
-{knowledge_base}
+Rules:
+1. Ensure endpoint paths are absolute (starting with /).
+2. Group related functionality into logical endpoint names (CamelCase).
+3. Identify path parameters, query parameters, and request bodies carefully.
 """
-
-# ── LLM singleton ─────────────────────────────────────────────────────────────
-from backend.llm import get_llm
-_llm = get_llm(temperature=0.1)
-
-MAX_RETRIES = 2  # initial + 1 retry with error context
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Architect node
-# ──────────────────────────────────────────────────────────────────────────────
 
 async def architect_node(state: dict) -> dict:
     """
-    LangGraph node — transforms knowledge_base → validated api_schema.
-    Returns a partial state update dict.
+    Architect node using RAG and Structured Output.
     """
-    knowledge_base = state.get("knowledge_base")
-    language = state.get("language", "python")
+    job_id = state["job_id"]
+    collection_name = state.get("vector_store_collection")
     instruction = state.get("instruction", "Generate the API schema")
 
-    if not knowledge_base:
-        log.warning("[architect] empty knowledge_base — skipping")
+    if not collection_name:
         return {
-            "api_schema": None,
-            "schema_fixes": [],
-            "messages": [AIMessage(content="No knowledge base available.", name="architect")],
-            **emit_sse("architect_skip", reason="empty knowledge_base"),
+            "messages": [AIMessage(content="No research data found. Cannot build schema.", name="architect")],
+            "sse_events": [{"type": "architect_error", "error": "No vector store found"}]
         }
 
-    endpoint_count = len(knowledge_base.get("endpoints_raw", []))
-    log.info("[architect] starting — %d raw endpoints", endpoint_count)
+    # ── Phase 1: Retrieve context from Vector Store (RAG) ──────────────────
+    # We query for general API structure and specific instructions
+    query = f"API base URL, authentication, and endpoint definitions. {instruction}"
+    docs = await query_docs(query, collection_name, k=15)
+    
+    context = "\n\n".join([f"SOURCE: {d.metadata.get('source')}\nCONTENT: {d.page_content}" for d in docs])
 
-    # ── Build prompt ──────────────────────────────────────────────────────────
-    base_prompt = _load_prompt()
-    prompt = base_prompt.replace("{knowledge_base}", json.dumps(knowledge_base, indent=2))
-    prompt = prompt.replace("{language}", language)
-    prompt = prompt.replace("{instruction}", instruction)
+    # ── Phase 2: Generate Schema (Structured Output) ──────────────────────
+    structured_llm = get_structured_llm(ApiSchema)
+    
+    sse_events = [{"type": "architect_starting", "context_length": len(context)}]
 
-    # ── LLM call with validation + self-correction retry ──────────────────────
-    api_schema = None
-    schema_fixes: list[str] = []
-    validation_errors: list[str] = []
-    last_error = ""
+    try:
+        api_schema_obj: ApiSchema = await structured_llm.ainvoke([
+            SystemMessage(content=ARCHITECT_PROMPT),
+            HumanMessage(content=f"INSTRUCTION: {instruction}\n\nDOCUMENTATION CONTEXT:\n{context}")
+        ])
+        
+        api_schema = api_schema_obj.model_dump()
 
-    for attempt in range(1, MAX_RETRIES + 1):
-        human_msg = "Transform this knowledge_base into an api_schema. Return JSON only."
-        if attempt > 1 and validation_errors:
-            human_msg = (
-                "Your previous schema had validation errors. Fix them:\n\n"
-                + "\n".join(f"- {e}" for e in validation_errors)
-                + "\n\nReturn corrected JSON only. No explanation."
-            )
-
-        try:
-            response = await get_llm().ainvoke([
-                SystemMessage(content=prompt),
-                HumanMessage(content=human_msg),
-            ])
-            raw = _extract_text(response)
-            api_schema = _parse_json(raw)
-        except json.JSONDecodeError as exc:
-            last_error = f"JSON parse error (attempt {attempt}): {exc}"
-            log.warning("[architect] %s — raw=%r", last_error, raw[:200] if 'raw' in dir() else "N/A")
-            if attempt < MAX_RETRIES:
-                await asyncio.sleep(2)
-                continue
-            break
-        except Exception as exc:
-            last_error = f"LLM error (attempt {attempt}): {exc}"
-            log.error("[architect] %s", last_error)
-            if attempt < MAX_RETRIES:
-                await asyncio.sleep(2)
-                continue
-            break
-
-        if api_schema is None:
-            continue
-
-        # ── Ensure required top-level fields ──────────────────────────────────
-        api_schema.setdefault("endpoints", [])
-        api_schema.setdefault("base_url", "")
-        api_schema.setdefault("auth", {"type": "none", "location": "none", "key_name": None})
-        api_schema.setdefault("api_name", knowledge_base.get("api_name", "Unknown API"))
-
-        # ── Deterministic post-validation ─────────────────────────────────────
+        # ── Phase 3: Post-Validation & Auto-Fixes ──────────────────────────
         validation = validate_schema(api_schema)
         api_schema = validation["schema"]
         schema_fixes = validation["fixes"]
-        validation_errors = validation["errors"]
+        
+        summary = (
+            f"API schema generated: {len(api_schema['endpoints'])} endpoints. "
+            f"{len(schema_fixes)} auto-fixes applied."
+        )
 
-        if not validation_errors:
-            log.info("[architect] schema valid on attempt %d (%d auto-fixes)", attempt, len(schema_fixes))
-            break
-
-        log.warning("[architect] attempt %d: %d validation errors — %s",
-                     attempt, len(validation_errors), validation_errors[:3])
-
-    # ── Handle total failure ──────────────────────────────────────────────────
-    if api_schema is None:
-        log.error("[architect] failed to produce schema: %s", last_error)
         return {
-            "api_schema": None,
-            "schema_fixes": [],
-            "messages": [AIMessage(content=f"Architect failed: {last_error}", name="architect")],
-            **emit_sse("architect_error", error=last_error),
+            "api_schema": api_schema,
+            "schema_fixes": schema_fixes,
+            "messages": [AIMessage(content=summary, name="architect")],
+            "sse_events": sse_events + [{
+                "type": "architect_done",
+                "endpoint_count": len(api_schema['endpoints']),
+                "auto_fixes": len(schema_fixes)
+            }]
         }
 
-    # ── Build result ──────────────────────────────────────────────────────────
-    ep_count = len(api_schema.get("endpoints", []))
-    auth_type = api_schema.get("auth", {}).get("type", "unknown")
-    fix_count = len(schema_fixes)
-    err_count = len(validation_errors)
-
-    summary = (
-        f"API schema generated: {ep_count} endpoints, auth={auth_type}. "
-        f"{fix_count} auto-fixes, {err_count} validation errors."
-    )
-    log.info("[architect] %s", summary)
-
-    # Merge SSE events
-    sse_update = emit_sse(
-        "architect_done",
-        endpoint_count=ep_count,
-        auth_type=auth_type,
-        auto_fixes=fix_count,
-        validation_errors=err_count,
-        valid=err_count == 0,
-    )
-
-    return {
-        "api_schema": api_schema,
-        "schema_fixes": schema_fixes,
-        "messages": [AIMessage(content=summary, name="architect")],
-        **sse_update,
-    }
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ──────────────────────────────────────────────────────────────────────────────
-
-def _extract_text(response) -> str:
-    """Safely extract string content from LangChain AIMessage."""
-    content = response.content
-    if isinstance(content, str):
-        return content.strip()
-    if isinstance(content, list):
-        parts = [p["text"] for p in content if isinstance(p, dict) and "text" in p]
-        return " ".join(parts).strip()
-    return str(content).strip()
-
-
-def _parse_json(raw: str) -> dict | None:
-    """Strip markdown fences and parse JSON."""
-    cleaned = re.sub(r"^```[a-z]*\n?", "", raw, flags=re.MULTILINE)
-    cleaned = re.sub(r"\n?```$", "", cleaned, flags=re.MULTILINE)
-    result = json.loads(cleaned.strip())
-    if not isinstance(result, dict):
-        return None
-    return result
+    except Exception as e:
+        logger.error(f"Architect failed: {e}")
+        return {
+            "messages": [AIMessage(content=f"Architect error: {str(e)}", name="architect")],
+            "sse_events": sse_events + [{"type": "architect_error", "error": str(e)}]
+        }
