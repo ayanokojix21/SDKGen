@@ -87,16 +87,11 @@ def _safe_import(module: str, attr: str, fallback):
 # ── Inline fallback stubs (only used if real agent import fails) ──────────────
 
 async def _stub_researcher(state: dict) -> dict:
-    """Stub: sets a minimal knowledge_base so the graph can progress."""
+    """Stub: sets minimal research data so the graph can progress."""
     return {
-        "knowledge_base": {
-            "stub": True,
-            "api_name": "stub",
-            "base_url": state.get("target_url", ""),
-            "auth": {"type": "none"},
-            "endpoints_raw": [],
-            "pages_crawled": [],
-        },
+        "vector_store_collection": f"job_{state.get('job_id', 'stub')}",
+        "research_summary": '{"api_name":"stub","base_url":"' + state.get("target_url", "") + '","auth":{"type":"none","location":"none","key_name":"","example":""},"key_endpoints_summary":"No endpoints found (stub)"}',
+        "crawled_pages": [],
         **emit_sse("researcher_stub", message="Researcher not implemented — using stub"),
     }
 
