@@ -77,9 +77,6 @@ const backendCmd      = document.getElementById('backend-cmd');
 const cmdCopied       = document.getElementById('cmd-copied');
 const pasteBtn        = document.getElementById('paste-btn');
 
-const assistantSection= document.getElementById('assistant-section');
-const elevenlabsWidget= document.getElementById('elevenlabs-widget');
-
 // ─── Initialise ───────────────────────────────────────────────────────────────
 async function init() {
   // 1. Auto-fill URL from active tab
@@ -400,12 +397,8 @@ chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
     window.tts.speak(data.text || '');
   }
 
-    if (evtType === 'packager_done') {
-      if (data.assistant_agent_id) {
-        elevenlabsWidget.setAttribute('agent-id', data.assistant_agent_id);
-        assistantSection.classList.remove('hidden');
-      }
-    }
+    // The agent-id is now hardcoded in popup.html based on user request.
+    // if (type === 'packager_done') ...
 
   // Forward file_ready to VS Code bridge for file injection
   if (evtType === 'file_ready' && selectedOutput === 'vscode') {

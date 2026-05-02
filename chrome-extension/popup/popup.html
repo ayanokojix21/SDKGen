@@ -93,18 +93,6 @@
     </div>
   </div>
 
-  <!-- ── Conversational Assistant (Hidden until generated) ────────── -->
-  <div id="assistant-section" class="assistant-section hidden">
-    <div class="assistant-header">
-      <span class="assistant-icon">🤖</span>
-      <span class="assistant-title">SDK Assistant</span>
-    </div>
-    <div class="assistant-body">
-      <!-- The official ElevenLabs widget will be injected/configured here -->
-      <elevenlabs-convai id="elevenlabs-widget" agent-id=""></elevenlabs-convai>
-    </div>
-  </div>
-
   <!-- ── Bottom bar ─────────────────────────────────────────────── -->
   <footer class="bottom-bar">
     <div class="bottom-left">
@@ -119,6 +107,9 @@
       <button id="open-vscode-btn" class="action-btn action-btn--primary" disabled>↗ VS Code</button>
     </div>
   </footer>
+
+  <!-- ── ElevenLabs Conversational Widget ────────────────────────── -->
+  <elevenlabs-convai agent-id="agent_7101kqn2gqydfj5a32jvap0t596j"></elevenlabs-convai>
 
   <script src="../lib/convai-widget-embed.js"></script>
   <script src="../lib/tts.js"></script>

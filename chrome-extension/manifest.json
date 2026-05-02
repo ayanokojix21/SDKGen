@@ -9,14 +9,17 @@
     "activeTab",
     "scripting",
     "storage",
-    "tabs"
+    "tabs",
+    "audioCapture"
   ],
 
   "host_permissions": [
     "http://localhost:8000/*",
     "ws://localhost:47291/*",
     "ws://localhost:47292/*",
-    "ws://localhost:47293/*"
+    "ws://localhost:47293/*",
+    "https://*.elevenlabs.io/*",
+    "wss://*.elevenlabs.io/*"
   ],
 
   "action": {
@@ -52,7 +55,7 @@
 
   "web_accessible_resources": [
     {
-      "resources": ["icons/*"],
+      "resources": ["icons/*", "lib/convai-widget-embed.js"],
       "matches": ["<all_urls>"]
     }
   ]
