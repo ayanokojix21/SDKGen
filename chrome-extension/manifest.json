@@ -35,6 +35,10 @@
 
   "options_page": "options/options.html",
 
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self' blob: data:;"
+  },
+
   "background": {
     "service_worker": "background/background.js",
     "type": "module"
@@ -57,7 +61,7 @@
 
   "web_accessible_resources": [
     {
-      "resources": ["icons/*", "lib/convai-widget-embed.js"],
+      "resources": ["icons/*", "lib/*"],
       "matches": ["<all_urls>"]
     }
   ]
