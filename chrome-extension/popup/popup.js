@@ -432,7 +432,7 @@ chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
     window.tts.speak(data.text || '');
   }
 
-    if (type === 'packager_done') {
+    if (evtType === 'packager_done') {
       if (data.assistant_agent_id) {
         window.convAi.setAgentId(data.assistant_agent_id);
         assistantSection.classList.remove('hidden');
@@ -468,8 +468,8 @@ function renderLine(data) {
   const colour = AGENT_COLOURS[type] || 'var(--text-secondary)';
   let text = '';
 
-  // Skip the 'done' sentinel — handled elsewhere
-  if (type === 'done') return;
+  // Skip sentinel and ping events
+  if (type === 'done' || type === 'ping') return;
 
   switch (type) {
     case 'supervisor':

@@ -80,7 +80,7 @@ class QaTestResult(BaseModel):
 class QaSummary(BaseModel):
     passed: int
     failed: int
-    recommendation: str = Field(description="fix_by_engineer, fix_by_researcher, or proceed")
+    recommendation: str = Field(description="fix_by_engineer, fix_by_architect, or proceed")
 
 class QaReport(BaseModel):
     summary: QaSummary

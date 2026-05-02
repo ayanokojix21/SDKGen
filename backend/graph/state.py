@@ -44,15 +44,17 @@ class SDKJobState(TypedDict):
 
     # ── Architect outputs ─────────────────────────────────────────────────────
     api_schema: Optional[dict]           # Pydantic-validated endpoint schema
-    schema_fixes: Annotated[list[str], operator.add]
+    schema_fixes: list[str]              # replaced each architect run (not accumulated)
+    architect_iteration: int             # counts consecutive architect retries
 
     # ── Engineer outputs ──────────────────────────────────────────────────────
     sdk_files: Optional[dict]            # {"client.py": "...", "models.py": "..."}
-    syntax_errors: Annotated[list[str], operator.add]
+    syntax_errors: list[str]   # replaced each engineer run (not accumulated)
 
     # ── QA Tester outputs ─────────────────────────────────────────────────────
     test_results: Optional[list[dict]]
     qa_iteration: int
+    engineer_iteration: int   # counts consecutive engineer retries
 
     # ── Packager outputs ──────────────────────────────────────────────────────
     final_files: Optional[dict]
@@ -86,6 +88,8 @@ def build_state_summary(state: dict) -> str:
         f"Status: {state.get('status', 'unknown')}",
         f"Iteration: {state.get('iteration_count', 0)}",
         f"QA Iteration: {state.get('qa_iteration', 0)}",
+        f"Engineer Iteration: {state.get('engineer_iteration', 0)}",
+        f"Architect Iteration: {state.get('architect_iteration', 0)}",
         f"Tokens Used: {state.get('total_tokens', 0)}",
         f"Estimated Cost: ${state.get('estimated_cost_usd', 0.0):.4f}",
     ]
@@ -142,12 +146,14 @@ def create_initial_state(
 
         "api_schema": None,
         "schema_fixes": [],
+        "architect_iteration": 0,
 
         "sdk_files": None,
-        "syntax_errors": [],
+        "syntax_errors": [],    # will be replaced (not appended) on each engineer run
 
         "test_results": None,
         "qa_iteration": 0,
+        "engineer_iteration": 0,
 
         "final_files": None,
         "narration_text": None,

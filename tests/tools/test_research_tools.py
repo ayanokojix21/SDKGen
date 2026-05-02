@@ -62,14 +62,14 @@ async def test_serper_search(mock_wrapper_cls, monkeypatch):
     monkeypatch.setenv("SERPER_API_KEY", "mock_key")
 
     mock_instance = MagicMock()
-    mock_instance.arun = AsyncMock(return_value="Search results")
+    mock_instance.aresults = AsyncMock(return_value={"organic": [{"snippet": "Search results"}]})
     mock_wrapper_cls.return_value = mock_instance
 
     from backend.tools.research_tools import serper_search
     result = await serper_search("API documentation")
 
     assert result == "Search results"
-    mock_instance.arun.assert_called_once_with("API documentation")
+    mock_instance.aresults.assert_called_once_with("API documentation")
 
 
 @pytest.mark.asyncio

@@ -10,6 +10,8 @@ Edge cases handled (from division.md §7):
   A1: Supervisor routes same agent 3x for same unresolved issue → status=failed
   A2: iteration_count >= 15 → Force END, emit safety_cutoff
   A3: qa_iteration >= 4    → Force END, QA cannot be resolved
+  A4: engineer_iteration >= 4 → Force qa_tester (skip endless syntax retries)
+  A5: architect_iteration >= 3 → Force engineer (skip endless schema retries)
 """
 
 from __future__ import annotations
@@ -42,6 +44,24 @@ def route_next(state: dict) -> str:
         log.error("[router] qa_iteration=%d >= %d — forcing END",
                   state.get("qa_iteration"), settings.MAX_QA_ROUNDS)
         return "end"
+
+    # ── A4: engineer retry ceiling ────────────────────────────────────────────
+    max_eng = getattr(settings, "MAX_ENGINEER_ROUNDS", 4)
+    if state.get("engineer_iteration", 0) >= max_eng:
+        next_agent_peek = (state.get("next_agent") or "").lower().strip()
+        if next_agent_peek == "engineer":
+            log.warning("[router] engineer_iteration=%d >= %d — forcing qa_tester",
+                        state.get("engineer_iteration"), max_eng)
+            return "qa_tester"
+
+    # ── A5: architect retry ceiling ──────────────────────────────────────────
+    max_arch = getattr(settings, "MAX_ARCHITECT_ROUNDS", 3)
+    if state.get("architect_iteration", 0) >= max_arch:
+        next_agent_peek = (state.get("next_agent") or "").lower().strip()
+        if next_agent_peek == "architect":
+            log.warning("[router] architect_iteration=%d >= %d — forcing engineer",
+                        state.get("architect_iteration"), max_arch)
+            return "engineer"
 
     # ── Route to whatever the Supervisor decided ──────────────────────────────
     next_agent = state.get("next_agent", "end")
