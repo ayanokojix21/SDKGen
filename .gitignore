@@ -34,3 +34,4 @@ examples/*
 # OS
 .DS_Store
 Thumbs.db
+*.vsix

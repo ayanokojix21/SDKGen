@@ -215,9 +215,6 @@ async def stream_generation(request: Request, job_id: str):
 async def download_sdk(job_id: str):
     """
     Returns a ZIP archive containing the generated SDK files.
-
-    The final_files dict is read from the MongoDB checkpoint via LangGraph's
-    get_state API, packaged into a ZIP, and streamed to the client.
     """
     import backend.graph.graph as graph_module
     graph = graph_module.compiled_graph
@@ -249,6 +246,39 @@ async def download_sdk(job_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="sdk_{job_id[:8]}.zip"'},
     )
+
+
+@app.get("/job/{job_id}/files", tags=["sdk"])
+async def get_job_files(job_id: str):
+    """
+    Returns the generated SDK files as a JSON dict {filename: content}.
+    Used by the VS Code extension to restore a completed job without SSE.
+    Returns 202 if the job is still running, 404 if not found.
+    """
+    import backend.graph.graph as graph_module
+    graph = graph_module.compiled_graph
+    if graph is None:
+        raise HTTPException(status_code=503, detail="Graph not initialised.")
+
+    try:
+        config   = {"configurable": {"thread_id": job_id}}
+        snapshot = await graph.aget_state(config)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Job not found: {exc}")
+
+    if not snapshot or not snapshot.values:
+        raise HTTPException(status_code=404, detail="No checkpoint found for this job.")
+
+    state = dict(snapshot.values)
+    final_files: Optional[dict] = state.get("final_files") or state.get("sdk_files")
+
+    if not final_files:
+        raise HTTPException(
+            status_code=202,
+            detail="SDK not ready yet — job may still be running or failed.",
+        )
+
+    return final_files
 
 
 # ──────────────────────────────────────────────────────────────────────────────
