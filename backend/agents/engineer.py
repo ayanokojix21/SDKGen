@@ -54,13 +54,19 @@ def _load_prompt(filename: str) -> str:
 _PYTHON_PROMPT = _load_prompt("engineer_python.txt")
 _TYPESCRIPT_PROMPT = _load_prompt("engineer_typescript.txt")
 
-# ── LLM singleton ─────────────────────────────────────────────────────────────
-_llm = ChatGoogleGenerativeAI(
-    model=settings.GEMINI_MODEL,
-    google_api_key=settings.GOOGLE_API_KEY,
-    temperature=0.2,
-    max_retries=0,
-)
+# ── LLM (lazy init — avoids crash at import if API key is missing) ────────────
+_llm = None
+
+def _get_llm():
+    global _llm
+    if _llm is None:
+        _llm = ChatGoogleGenerativeAI(
+            model=settings.GEMINI_MODEL,
+            google_api_key=settings.GOOGLE_API_KEY,
+            temperature=0.2,
+            max_retries=0,
+        )
+    return _llm
 
 MAX_ATTEMPTS = 2  # initial generation + 1 syntax-fix retry
 
@@ -142,7 +148,7 @@ async def engineer_node(state: dict) -> dict:
                     + format_errors_for_retry(check_results)
                 )
 
-            response = await _llm.ainvoke([
+            response = await _get_llm().ainvoke([
                 SystemMessage(content=prompt),
                 HumanMessage(content=human_msg),
             ])

@@ -75,13 +75,19 @@ _STRICT_SUFFIX = (
     "Reply with ONLY the JSON object. No markdown. No explanation. No backticks."
 )
 
-# ── LLM singleton ─────────────────────────────────────────────────────────────
-_llm = ChatGoogleGenerativeAI(
-    model=settings.GEMINI_MODEL,
-    google_api_key=settings.GOOGLE_API_KEY,
-    temperature=0,          # deterministic routing
-    max_retries=0,          # we handle retries ourselves
-)
+# ── LLM (lazy init — avoids crash at import if API key is missing) ────────────
+_llm = None
+
+def _get_llm():
+    global _llm
+    if _llm is None:
+        _llm = ChatGoogleGenerativeAI(
+            model=settings.GEMINI_MODEL,
+            google_api_key=settings.GOOGLE_API_KEY,
+            temperature=0,          # deterministic routing
+            max_retries=0,          # we handle retries ourselves
+        )
+    return _llm
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -120,7 +126,7 @@ async def supervisor_node(state: dict) -> dict:
     for attempt in range(1, settings.SUPERVISOR_RETRIES + 1):
         prompt_text = full_prompt if attempt == 1 else full_prompt + _STRICT_SUFFIX
         try:
-            response = await _llm.ainvoke([
+            response = await _get_llm().ainvoke([
                 SystemMessage(content="You are a precise routing controller. Output JSON only."),
                 HumanMessage(content=prompt_text),
             ])
