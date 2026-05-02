@@ -105,7 +105,13 @@ async def supervisor_node(state: dict) -> dict:
     # ── Build prompt ──────────────────────────────────────────────────────────
     base_prompt = _load_supervisor_prompt()
     state_summary = build_state_summary(state)
+    
+    test_results_str = "None"
+    if state.get("test_results"):
+        test_results_str = json.dumps(state["test_results"], indent=2)
+        
     full_prompt = base_prompt.replace("{state_summary}", state_summary)
+    full_prompt = full_prompt.replace("{test_results}", test_results_str)
 
     # ── Gemini call with retry / exponential backoff ──────────────────────────
     routing: dict = {}
