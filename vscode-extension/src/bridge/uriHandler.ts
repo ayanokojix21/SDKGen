@@ -14,6 +14,7 @@ import { FileWriter } from '../injector/fileWriter';
 import { Installer } from '../injector/installer';
 import { Opener } from '../injector/opener';
 import { Narrator } from '../tts/narrator';
+import { refreshHistory } from '../extension';
 
 const BACKEND_BASE = 'http://localhost:8000';
 
@@ -141,9 +142,10 @@ async function routeEvent(
     narrator.speak(jobId, String(event.text ?? ''));
   }
 
-  // ── complete → open main file ──────────────────────────────────────────────
+  // ── complete → open main file ──────────────────────────────────────────────────────
   if (type === 'complete' && opener) {
     await opener.openMainFile(language);
+    refreshHistory(); // update History sidebar
     cleanup(jobId);
   }
 

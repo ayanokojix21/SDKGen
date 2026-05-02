@@ -109,7 +109,7 @@ async def architect_node(state: dict) -> dict:
             )
 
         try:
-            response = await _llm.ainvoke([
+            response = await _get_llm().ainvoke([
                 SystemMessage(content=prompt),
                 HumanMessage(content=human_msg),
             ])

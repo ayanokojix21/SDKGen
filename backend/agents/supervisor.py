@@ -116,7 +116,7 @@ async def supervisor_node(state: dict) -> dict:
     for attempt in range(1, settings.SUPERVISOR_RETRIES + 1):
         prompt_text = full_prompt if attempt == 1 else full_prompt + _STRICT_SUFFIX
         try:
-            response = await _llm.ainvoke([
+            response = await _get_llm().ainvoke([
                 SystemMessage(content="You are a precise routing controller. Output JSON only."),
                 HumanMessage(content=prompt_text),
             ])

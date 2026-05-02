@@ -140,7 +140,7 @@ async def engineer_node(state: dict) -> dict:
                         + format_errors_for_retry(check_results)
                     )
 
-            response = await _llm.ainvoke([
+            response = await _get_llm().ainvoke([
                 SystemMessage(content=prompt),
                 HumanMessage(content=human_msg),
             ])

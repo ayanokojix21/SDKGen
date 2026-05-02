@@ -12,6 +12,12 @@ import { HistoryViewProvider } from './memory/historyView';
 
 // Singleton WS server — shared across all handlers
 let wsServer: WSServer | null = null;
+let historyProvider: import('./memory/historyView').HistoryViewProvider | null = null;
+
+/** Called by uriHandler after job completion to refresh the history sidebar. */
+export function refreshHistory(): void {
+  historyProvider?.refresh();
+}
 
 /**
  * Called by VS Code when the extension activates.
@@ -24,6 +30,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   await wsServer.start();
   context.subscriptions.push({
     dispose: () => wsServer?.stop(),
+  });
+
+  // Wire WS new_job → URI handler (Chrome bridge Layer 1)
+  wsServer.onNewJob((msg) => {
+    const uri = vscode.Uri.parse(
+      `vscode://docs-to-code.extension/generate?job_id=${encodeURIComponent(msg.job_id)}&language=${encodeURIComponent(msg.language ?? 'python')}`
+    );
+    handleUri(uri, context);
   });
 
   // ── 2. Register URI handler ────────────────────────────────────────────────
@@ -115,7 +129,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // ── 4. Register History TreeView ───────────────────────────────────────────
-  const historyProvider = new HistoryViewProvider(context);
+  historyProvider = new HistoryViewProvider(context);
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('docs-to-code.historyView', historyProvider)
   );
