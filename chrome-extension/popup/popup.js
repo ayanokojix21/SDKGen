@@ -109,8 +109,25 @@ function updateVSCodeBadge(connected, port) {
     badge.className = 'badge badge--connected';
     label.textContent = `VS Code :${port || 47291}`;
   } else {
+    // ── Edge case C1: VS Code not detected ──────────────────────────────────
     badge.className = 'badge badge--disconnected';
     label.textContent = 'VS Code';
+
+    // Switch output to ZIP as primary CTA
+    selectedOutput = 'zip';
+    document.querySelectorAll('#output-toggle .toggle-btn').forEach((b) => {
+      b.classList.toggle('toggle-btn--active', b.dataset.value === 'zip');
+    });
+
+    // Show install hint in terminal (non-blocking)
+    appendLine(
+      '○ VS Code extension not detected. Output set to Download ZIP.',
+      'var(--text-secondary)'
+    );
+    appendLine(
+      '  Install: Extensions → search "Docs to Code" · or load from vscode-extension/',
+      'var(--text-secondary)'
+    );
   }
 }
 
