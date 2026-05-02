@@ -28,7 +28,6 @@ import re
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
 
 from backend.config import settings
 from backend.graph.state import emit_sse
@@ -57,12 +56,8 @@ KNOWLEDGE BASE:
 """
 
 # ── LLM singleton ─────────────────────────────────────────────────────────────
-_llm = ChatGoogleGenerativeAI(
-    model=settings.GEMINI_MODEL,
-    google_api_key=settings.GOOGLE_API_KEY,
-    temperature=0.1,
-    max_retries=0,
-)
+from backend.llm import get_llm
+_llm = get_llm(temperature=0.1)
 
 MAX_RETRIES = 2  # initial + 1 retry with error context
 

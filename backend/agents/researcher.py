@@ -15,7 +15,7 @@ import json
 import logging
 from pathlib import Path
 from langchain_core.messages import AIMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from backend.llm import get_llm
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from backend.tools.scrape_web import scrape_web
@@ -251,10 +251,7 @@ async def _build_knowledge_base(scraped_pages: list[dict]) -> dict | None:
         pages_text += f"\n\n--- PAGE: {page['url']} ---\n{page['content']}\n"
 
     try:
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            temperature=0.1,
-        )
+        llm = get_llm(temperature=0.1)
 
         response = await llm.ainvoke([
             SystemMessage(content=_RESEARCHER_PROMPT),
@@ -290,10 +287,7 @@ async def _merge_knowledge_base(
     )
 
     try:
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            temperature=0.1,
-        )
+        llm = get_llm(temperature=0.1)
 
         response = await llm.ainvoke([
             SystemMessage(content="You are merging new API documentation into an existing knowledge base."),

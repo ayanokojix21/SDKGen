@@ -23,7 +23,6 @@ import re
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
 
 from backend.config import settings
 from backend.graph.state import emit_sse
@@ -43,12 +42,8 @@ def _load_narrate_prompt() -> str:
 _NARRATE_PROMPT = _load_narrate_prompt()
 
 # ── LLM for narration (non-critical, higher temperature for natural speech) ───
-_narrate_llm = ChatGoogleGenerativeAI(
-    model=settings.GEMINI_MODEL,
-    google_api_key=settings.GOOGLE_API_KEY,
-    temperature=0.7,
-    max_retries=1,
-)
+from backend.llm import get_llm
+_narrate_llm = get_llm(temperature=0.7)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

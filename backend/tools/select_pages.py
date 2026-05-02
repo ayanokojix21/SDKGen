@@ -9,7 +9,7 @@ import json
 import os
 import logging
 from pathlib import Path
-from langchain_google_genai import ChatGoogleGenerativeAI
+from backend.llm import get_llm
 from langchain_core.messages import SystemMessage, HumanMessage
 
 logger = logging.getLogger(__name__)
@@ -61,11 +61,8 @@ AVAILABLE LINKS:
 {json.dumps(links, indent=2)}"""
 
     try:
-        # Use Gemini Flash — fast and cheap for this classification task
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            temperature=0.1,  # Low temp for consistent structured output
-        )
+        # Use LLM with Groq fallbacks
+        llm = get_llm(temperature=0.1)
 
         response = await llm.ainvoke([
             SystemMessage(content=_SELECT_PAGES_PROMPT),

@@ -76,12 +76,8 @@ _STRICT_SUFFIX = (
 )
 
 # ── LLM singleton ─────────────────────────────────────────────────────────────
-_llm = ChatGoogleGenerativeAI(
-    model=settings.GEMINI_MODEL,
-    google_api_key=settings.GOOGLE_API_KEY,
-    temperature=0,          # deterministic routing
-    max_retries=0,          # we handle retries ourselves
-)
+from backend.llm import get_llm
+_llm = get_llm(temperature=0)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

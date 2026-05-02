@@ -32,7 +32,6 @@ import re
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
 
 from backend.config import settings
 from backend.graph.state import emit_sse
@@ -55,12 +54,8 @@ _PYTHON_PROMPT = _load_prompt("engineer_python.txt")
 _TYPESCRIPT_PROMPT = _load_prompt("engineer_typescript.txt")
 
 # ── LLM singleton ─────────────────────────────────────────────────────────────
-_llm = ChatGoogleGenerativeAI(
-    model=settings.GEMINI_MODEL,
-    google_api_key=settings.GOOGLE_API_KEY,
-    temperature=0.2,
-    max_retries=0,
-)
+from backend.llm import get_llm
+_llm = get_llm(temperature=0.2)
 
 MAX_ATTEMPTS = 2  # initial generation + 1 syntax-fix retry
 
@@ -137,10 +132,13 @@ async def engineer_node(state: dict) -> dict:
                     )
             else:
                 # Retry with syntax error context
-                human_msg = (
-                    "Your previous output had syntax errors. Fix them and regenerate.\n\n"
-                    + format_errors_for_retry(check_results)
-                )
+                if check_results is None:
+                    human_msg = "Your previous output was not valid JSON. Ensure you return ONLY valid JSON."
+                else:
+                    human_msg = (
+                        "Your previous output had syntax errors. Fix them and regenerate.\n\n"
+                        + format_errors_for_retry(check_results)
+                    )
 
             response = await _llm.ainvoke([
                 SystemMessage(content=prompt),

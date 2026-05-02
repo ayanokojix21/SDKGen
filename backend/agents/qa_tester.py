@@ -14,7 +14,7 @@ import json
 import logging
 from pathlib import Path
 from langchain_core.messages import AIMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from backend.llm import get_llm
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from backend.tools.execute_http import execute_http_request
@@ -71,10 +71,7 @@ async def qa_tester_node(state: dict) -> dict:
         formatted_prompt = formatted_prompt.replace(k, v)
 
     try:
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            temperature=0.1,
-        )
+        llm = get_llm(temperature=0.1)
 
         response = await llm.ainvoke([
             HumanMessage(content=formatted_prompt),
