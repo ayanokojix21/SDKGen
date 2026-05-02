@@ -1,61 +1,33 @@
 """Tests for backend/tools/syntax_check.py."""
 import pytest
-from unittest.mock import patch, MagicMock
 from backend.tools.syntax_check import check_syntax, format_errors_for_retry
 
 
-@pytest.fixture
-def mock_sandbox():
-    """Mock the E2B Sandbox context manager."""
-    with patch("backend.tools.syntax_check.Sandbox") as mock_cls:
-        mock_instance = MagicMock()
-        mock_cls.return_value.__enter__.return_value = mock_instance
-
-        mock_instance.files.write = MagicMock()
-
-        mock_proc = MagicMock()
-        mock_proc.exit_code = 0
-        mock_proc.stderr = ""
-        mock_instance.process.start.return_value = mock_proc
-
-        yield mock_instance
-
-
 @pytest.mark.asyncio
-async def test_check_syntax_python_success(mock_sandbox, monkeypatch):
-    monkeypatch.setenv("E2B_API_KEY", "test_key")
-
-    files = {"test.py": "print('hello')"}
+async def test_check_syntax_python_success():
+    """Valid Python code should pass syntax check."""
+    files = {"test.py": "print('hello')\nx = 42\n"}
     results = await check_syntax(files, "python")
 
     assert len(results) == 1
     assert results[0]["file"] == "test.py"
     assert results[0]["valid"] is True
-
-    mock_sandbox.files.write.assert_called_with("test.py", "print('hello')")
-    mock_sandbox.process.start.assert_called_with("python3 -m py_compile test.py")
+    assert results[0]["errors"] == []
 
 
 @pytest.mark.asyncio
-async def test_check_syntax_python_failure(mock_sandbox, monkeypatch):
-    monkeypatch.setenv("E2B_API_KEY", "test_key")
-
-    mock_proc = MagicMock()
-    mock_proc.exit_code = 1
-    mock_proc.stderr = "SyntaxError: invalid syntax"
-    mock_sandbox.process.start.return_value = mock_proc
-
-    files = {"test.py": "print 'hello'"}
+async def test_check_syntax_python_failure():
+    """Invalid Python syntax should be caught by ast.parse."""
+    files = {"test.py": "def foo(\n  print('hello')\n"}
     results = await check_syntax(files, "python")
 
     assert results[0]["valid"] is False
-    assert "SyntaxError" in results[0]["errors"][0]
+    assert len(results[0]["errors"]) > 0
 
 
 @pytest.mark.asyncio
-async def test_check_syntax_empty_file(mock_sandbox, monkeypatch):
-    monkeypatch.setenv("E2B_API_KEY", "test_key")
-
+async def test_check_syntax_empty_file():
+    """Empty files should be flagged as invalid."""
     files = {"empty.py": "  "}
     results = await check_syntax(files, "python")
 
@@ -64,11 +36,9 @@ async def test_check_syntax_empty_file(mock_sandbox, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_check_syntax_fallback(monkeypatch):
-    """Test when E2B_API_KEY is not set."""
-    monkeypatch.delenv("E2B_API_KEY", raising=False)
-
-    files = {"test.py": "print('hello')"}
+async def test_check_syntax_fallback():
+    """Non-.py files should always pass (README, etc.)."""
+    files = {"README.md": "# Hello\nThis is a readme."}
     results = await check_syntax(files, "python")
 
     assert len(results) == 1

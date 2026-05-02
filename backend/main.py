@@ -202,8 +202,9 @@ async def stream_generation(request: Request, job_id: str):
 
         except (asyncio.CancelledError, GeneratorExit):
             log.info("[sse] generator cancelled for job=%s", job_id)
-        finally:
-            job_manager.remove_queue(job_id)
+            # We DO NOT remove the queue here. If the user closed the popup, 
+            # they might reopen it and reconnect to the same job_id. 
+            # The queue will be cleaned up by the runner task after completion.
 
     return EventSourceResponse(event_generator())
 

@@ -1,10 +1,14 @@
 /**
  * popup.js — Docs to Code Chrome Extension
- * Dev 4: Popup controller — SSE consumer, terminal renderer, state management.
+ * Dev 4: Popup controller — terminal renderer, state management.
+ *
+ * SSE is now managed by the background service worker to survive popup close.
+ * This file receives events via chrome.runtime.onMessage and renders them.
  *
  * Flow:
  *   Generate click → GET_PAGE_CONTENT → POST /generate/start → job_id
- *   → EventSource /generate/stream → renderLine() per event
+ *   → background.js opens EventSource → relays events via chrome.runtime
+ *   → renderLine() per event
  *   → on narrate → TTS
  *   → on complete → enable action buttons
  */
@@ -20,29 +24,36 @@ const AGENT_COLOURS = {
   researcher_crawl_plan:  'var(--c-researcher)',
   researcher_scraping:    'var(--c-researcher)',
   researcher_scraped:     'var(--c-researcher)',
+  researcher_serper:      'var(--c-researcher)',
   researcher_done:        'var(--c-researcher)',
   architect:              'var(--c-architect)',
   architect_validating:   'var(--c-architect)',
   architect_fix:          'var(--c-architect)',
   architect_done:         'var(--c-architect)',
+  architect_error:        'var(--c-qa-fail)',
   engineer:               'var(--c-engineer)',
   engineer_writing:       'var(--c-engineer)',
   engineer_file_done:     'var(--c-engineer)',
+  engineer_done:          'var(--c-engineer)',
   engineer_syntax_error:  'var(--c-qa-fail)',
+  engineer_error:         'var(--c-qa-fail)',
   qa_test_pass:           'var(--c-qa-pass)',
   qa_test_fail:           'var(--c-qa-fail)',
   qa_done:                'var(--c-qa-pass)',
+  qa_error:               'var(--c-qa-fail)',
   packager:               'var(--c-packager)',
+  packager_done:          'var(--c-packager)',
+  packager_fail:          'var(--c-qa-fail)',
   file_ready:             'var(--c-packager)',
   narrate:                'var(--c-narrate)',
   complete:               'var(--c-complete)',
   agent_warn:             'var(--c-warn)',
   safety_cutoff:          'var(--c-safety)',
+  error:                  'var(--c-qa-fail)',
 };
 
 // ─── State ───────────────────────────────────────────────────────────────────
 let activeJobId = null;
-let activeEventSource = null;
 let selectedLanguage = 'python';
 let selectedOutput = 'vscode';
 let isGenerating = false;
@@ -74,11 +85,11 @@ async function init() {
   // 2. Check VS Code connection
   checkVSCodeStatus();
 
-  // 3. Check for in-progress job (Edge case C5)
-  await checkResumeState();
-
-  // 4. Check backend health
+  // 3. Check backend health
   await checkBackend();
+
+  // 4. Check for in-progress job and replay buffered events
+  await checkResumeState();
 }
 
 // ─── URL auto-fill ────────────────────────────────────────────────────────────
@@ -139,20 +150,68 @@ async function checkBackend() {
   }
 }
 
-// ─── Resume banner (Edge case C5) ─────────────────────────────────────────────
+// ─── Resume / replay from background buffer ──────────────────────────────────
 async function checkResumeState() {
-  const { activeJobId: savedJobId } = await chrome.storage.session.get('activeJobId');
-  if (savedJobId) {
-    activeJobId = savedJobId;
-    const resumeText = document.getElementById('resume-text');
-    resumeText.innerHTML = `Job <code>${savedJobId.slice(0, 8)}</code> in progress — <button id="resume-btn" class="link-btn">resume</button>`;
-    resumeBanner.classList.remove('hidden');
+  try {
+    const sseState = await chrome.runtime.sendMessage({ type: 'GET_SSE_STATE' });
 
-    document.getElementById('resume-btn').addEventListener('click', () => {
-      resumeBanner.classList.add('hidden');
-      connectSSE(savedJobId);
-    });
-  }
+    if (sseState && sseState.jobId) {
+      activeJobId = sseState.jobId;
+
+      // Replay buffered events
+      if (sseState.buffer && sseState.buffer.length > 0) {
+        appendLine(`↻ Reconnected to job ${sseState.jobId.slice(0, 8)}… — replaying ${sseState.buffer.length} events`, 'var(--c-supervisor)');
+
+        for (const evt of sseState.buffer) {
+          renderLine(evt);
+        }
+      }
+
+      if (sseState.finished) {
+        // Job already finished while popup was closed
+        setGenerating(false);
+        // Check if the last event was an error
+        const lastEvt = sseState.buffer?.[sseState.buffer.length - 1];
+        if (lastEvt) {
+          const lastType = lastEvt.type || '';
+          if (lastType === 'complete') {
+            onComplete(activeJobId, lastEvt);
+          } else if (lastType === 'error' || lastType === 'safety_cutoff' || lastEvt.status === 'failed') {
+            onFailed(lastEvt);
+          }
+        }
+      } else if (sseState.connected) {
+        // Job still running — set UI to generating state
+        setGenerating(true);
+      } else {
+        // Not connected but not finished — show resume banner
+        const resumeText = document.getElementById('resume-text');
+        resumeText.innerHTML = `Job <code>${sseState.jobId.slice(0, 8)}</code> may be in progress — <button id="resume-btn" class="link-btn">resume</button>`;
+        resumeBanner.classList.remove('hidden');
+
+        document.getElementById('resume-btn').addEventListener('click', () => {
+          resumeBanner.classList.add('hidden');
+          setGenerating(true);
+          chrome.runtime.sendMessage({ type: 'START_SSE', jobId: sseState.jobId });
+        });
+      }
+    } else {
+      // Check session storage as fallback
+      const { activeJobId: savedJobId } = await chrome.storage.session.get('activeJobId');
+      if (savedJobId) {
+        activeJobId = savedJobId;
+        const resumeText = document.getElementById('resume-text');
+        resumeText.innerHTML = `Job <code>${savedJobId.slice(0, 8)}</code> may be in progress — <button id="resume-btn" class="link-btn">resume</button>`;
+        resumeBanner.classList.remove('hidden');
+
+        document.getElementById('resume-btn').addEventListener('click', () => {
+          resumeBanner.classList.add('hidden');
+          setGenerating(true);
+          chrome.runtime.sendMessage({ type: 'START_SSE', jobId: savedJobId });
+        });
+      }
+    }
+  } catch (_) {}
 }
 
 // ─── Language toggle ──────────────────────────────────────────────────────────
@@ -213,7 +272,7 @@ backendCmd.addEventListener('click', async () => {
 // ─── Resume dismiss ───────────────────────────────────────────────────────────
 resumeDismiss.addEventListener('click', () => {
   resumeBanner.classList.add('hidden');
-  chrome.storage.session.remove('activeJobId');
+  chrome.runtime.sendMessage({ type: 'STOP_SSE' });
   activeJobId = null;
 });
 
@@ -284,7 +343,7 @@ async function handleGenerate() {
     return;
   }
 
-  // 3. Store job_id for resume on popup close (Edge case C5)
+  // 3. Store job_id
   activeJobId = jobId;
   await chrome.storage.session.set({ activeJobId: jobId });
 
@@ -303,63 +362,58 @@ async function handleGenerate() {
     }
   } catch (_) {}
 
-  // 6. Connect SSE stream
-  connectSSE(jobId);
+  // 6. Tell background to connect SSE (background owns the EventSource)
+  chrome.runtime.sendMessage({ type: 'START_SSE', jobId });
 }
 
-// ─── SSE connection ───────────────────────────────────────────────────────────
+// ─── Listen for SSE events from background service worker ─────────────────────
 
-function connectSSE(jobId) {
-  // Close any existing stream
-  if (activeEventSource) {
-    activeEventSource.close();
-    activeEventSource = null;
+chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
+  if (message.type !== 'SSE_EVENT') return;
+
+  const data = message.data;
+  if (!data) return;
+
+  // Forward to overlay
+  forwardToOverlay(data);
+
+  // Render in popup terminal
+  renderLine(data);
+
+  // Handle special events
+  const evtType = data.type || data.event || '';
+
+  // 'done' is the backend sentinel — job complete
+  if (evtType === 'done') {
+    setGenerating(false);
+    return;
   }
 
-  const es = window.dtcApi.streamSSE(jobId);
-  activeEventSource = es;
+  if (evtType === 'reroute') {
+    triggerRerouteFlash();
+  }
 
-  es.addEventListener('message', (e) => {
-    let data;
-    try {
-      data = JSON.parse(e.data);
-    } catch {
-      return;
-    }
+  if (evtType === 'narrate') {
+    window.tts.speak(data.text || '');
+  }
 
-    // Forward to overlay
-    forwardToOverlay(data);
+  // Forward file_ready to VS Code bridge for file injection
+  if (evtType === 'file_ready' && selectedOutput === 'vscode') {
+    window.dtcBridge.onFileWritten(data.filename || '');
+  }
 
-    // Render in popup terminal
-    renderLine(data);
+  if (evtType === 'complete') {
+    onComplete(activeJobId, data);
+  }
 
-    // Handle special events
-    const type = data.type || data.event || '';
+  if (evtType === 'error') {
+    onFailed(data);
+  }
 
-    if (type === 'reroute') {
-      triggerRerouteFlash();
-    }
-
-    if (type === 'narrate') {
-      window.tts.speak(data.text || '');
-    }
-
-    if (type === 'complete') {
-      onComplete(jobId, data);
-    }
-
-    if (type === 'safety_cutoff' || data.status === 'failed') {
-      onFailed(data);
-    }
-  });
-
-  es.addEventListener('error', () => {
-    if (es.readyState === EventSource.CLOSED) {
-      appendLine('⚠ Stream disconnected.', 'var(--c-warn)');
-      setGenerating(false);
-    }
-  });
-}
+  if (evtType === 'safety_cutoff' || data.status === 'failed') {
+    onFailed(data);
+  }
+});
 
 // ─── Terminal rendering ───────────────────────────────────────────────────────
 
@@ -372,6 +426,9 @@ function renderLine(data) {
   const colour = AGENT_COLOURS[type] || 'var(--text-secondary)';
   let text = '';
 
+  // Skip the 'done' sentinel — handled elsewhere
+  if (type === 'done') return;
+
   switch (type) {
     case 'supervisor':
       text = `🧠 [SUPERVISOR] → ${data.routing_to || '?'} · ${data.reasoning || ''}`;
@@ -380,22 +437,27 @@ function renderLine(data) {
       text = `↩ [REROUTE] ${data.from} → ${data.to} · ${data.reason || ''}`;
       break;
     case 'researcher_analysing':
-      text = `🔍 [RESEARCHER] Analysing ${data.link_count || '?'} links…`;
+      text = `🔍 [RESEARCHER] Analysing ${data.goal || data.link_count || '?'}…`;
       break;
-    case 'researcher_crawl_plan':
-      text = `📋 [RESEARCHER] Plan: ${data.selected_count || 0} selected · ${data.skipped_count || 0} skipped`;
+    case 'researcher_crawl_plan': {
+      const selCount = data.selected ? data.selected.length : (data.selected_count || 0);
+      text = `📋 [RESEARCHER] Plan: ${selCount} selected · ${data.skipped_count || 0} skipped`;
       break;
+    }
     case 'researcher_scraping':
       text = `🌐 [RESEARCHER] Scraping ${data.url || ''}`;
       break;
     case 'researcher_scraped':
       text = `✓ [RESEARCHER] ${data.url || ''} — ${(data.char_count || 0).toLocaleString()} chars`;
       break;
+    case 'researcher_serper':
+      text = `🔎 [RESEARCHER] Web search: ${data.query || ''}`;
+      break;
     case 'researcher_done':
-      text = `✓ [RESEARCHER] Done · ${data.endpoint_count || '?'} endpoints · ${data.page_count || '?'} pages`;
+      text = `✓ [RESEARCHER] Done · ${data.page_count || '?'} pages crawled`;
       break;
     case 'architect_validating':
-      text = `🔬 [ARCHITECT] Validating schema…`;
+      text = `🔬 [ARCHITECT] Validating schema… (${(data.context_length || 0).toLocaleString()} chars context)`;
       break;
     case 'architect_fix':
       text = `🔧 [ARCHITECT] Fix: ${data.fix || ''}`;
@@ -403,17 +465,26 @@ function renderLine(data) {
     case 'architect_done':
       text = `✓ [ARCHITECT] Schema ready · ${data.endpoint_count || '?'} endpoints · ${data.fixes_count || 0} fixes`;
       break;
+    case 'architect_error':
+      text = `✕ [ARCHITECT] Error: ${data.error || ''}`;
+      break;
     case 'engineer_writing':
       text = `✍ [ENGINEER] Writing ${data.filename || ''}…`;
       break;
     case 'engineer_file_done':
       text = `✓ [ENGINEER] ${data.filename || ''} (${data.line_count || '?'} lines)`;
       break;
+    case 'engineer_done':
+      text = `📦 [ENGINEER] SDK complete · ${data.file_count || '?'} files · ${data.syntax_errors || 0} syntax issues`;
+      break;
     case 'engineer_syntax_error':
       text = `✕ [ENGINEER] Syntax error in ${data.filename || ''} — ${data.error || ''}`;
       break;
+    case 'engineer_error':
+      text = `✕ [ENGINEER] Error: ${data.error || ''}`;
+      break;
     case 'qa_test_pass':
-      text = `✓ [QA] ${data.endpoint || ''} → ${data.status_code || 200} (${data.latency_ms || '?'}ms)`;
+      text = `✓ [QA] ${data.endpoint || ''} → ${data.status_code || 200}`;
       break;
     case 'qa_test_fail':
       text = `✕ [QA] ${data.endpoint || ''} → expected ${data.expected || '?'} got ${data.actual || data.status_code || 'err'} ${data.error ? '· ' + data.error : ''}`;
@@ -421,8 +492,17 @@ function renderLine(data) {
     case 'qa_done':
       text = `📊 [QA] ${data.passed || 0}/${data.total || 0} passed · ${data.failed || 0} failed`;
       break;
+    case 'qa_error':
+      text = `✕ [QA] Error: ${data.error || ''}`;
+      break;
     case 'file_ready':
       text = `📁 [PACKAGER] ${data.filename || ''} → VS Code`;
+      break;
+    case 'packager_done':
+      text = `📦 [PACKAGER] ${data.file_count || '?'} files packaged`;
+      break;
+    case 'packager_fail':
+      text = `✕ [PACKAGER] Failed: ${data.reason || ''}`;
       break;
     case 'narrate':
       text = `🔊 [NARRATE] ${data.text || ''}`;
@@ -435,6 +515,9 @@ function renderLine(data) {
       break;
     case 'safety_cutoff':
       text = `⛔ [SAFETY] ${data.message || 'Safety cutoff reached — max iterations hit'}`;
+      break;
+    case 'error':
+      text = `✕ [ERROR] ${data.message || 'An error occurred'}`;
       break;
     default:
       // Generic fallback — still show it
@@ -500,32 +583,25 @@ function onComplete(jobId, data) {
   downloadBtn.disabled = false;
   openVSCodeBtn.disabled = false;
 
-  // Clear resume state
-  chrome.storage.session.remove('activeJobId');
-
   // Wire download button
   downloadBtn.onclick = () => window.dtcApi.downloadZip(jobId);
 
   // Wire VS Code button
   openVSCodeBtn.onclick = () => window.dtcBridge.openInVSCode(jobId);
 
-  // Close SSE stream
-  if (activeEventSource) {
-    activeEventSource.close();
-    activeEventSource = null;
+  // Auto-trigger the selected output action
+  if (selectedOutput === 'zip') {
+    appendLine('⏳ Downloading ZIP automatically...', 'var(--text-secondary)');
+    window.dtcApi.downloadZip(jobId);
+  } else if (selectedOutput === 'vscode') {
+    appendLine('⏳ Opening in VS Code automatically...', 'var(--text-secondary)');
+    window.dtcBridge.openInVSCode(jobId);
   }
 }
 
 function onFailed(data) {
   setGenerating(false);
   appendLine(`✕ Generation stopped: ${data.message || data.failure_reason || 'unknown reason'}`, 'var(--c-qa-fail)');
-
-  if (activeEventSource) {
-    activeEventSource.close();
-    activeEventSource = null;
-  }
-
-  chrome.storage.session.remove('activeJobId');
 }
 
 // ─── Generating state ────────────────────────────────────────────────────────

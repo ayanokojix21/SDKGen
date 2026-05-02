@@ -68,21 +68,45 @@ LANGUAGE: {language}
         
         sdk_files = {f.filename: f.content for f in sdk_obj.files}
 
+        sse_events = []
+
+        # Emit per-file writing events
+        for filename, content in sdk_files.items():
+            sse_events.append({"type": "engineer_writing", "filename": filename})
+            line_count = content.count("\n") + 1
+            sse_events.append({
+                "type": "engineer_file_done",
+                "filename": filename,
+                "line_count": line_count,
+            })
+
         # ── Phase 3: Syntax Check ─────────────────────────────────────────
         check_results = await check_syntax(sdk_files, language)
         syntax_errors = [f"{r['file']}: {e}" for r in check_results if not r["valid"] for e in r["errors"]]
 
+        # Emit per-error syntax events
+        for err in syntax_errors:
+            parts = err.split(": ", 1)
+            sse_events.append({
+                "type": "engineer_syntax_error",
+                "filename": parts[0] if len(parts) > 1 else "unknown",
+                "error": parts[1] if len(parts) > 1 else err,
+            })
+
         summary = f"SDK generated: {len(sdk_files)} files. {len(syntax_errors)} syntax issues found."
+
+        # Final summary event
+        sse_events.append({
+            "type": "engineer_done",
+            "file_count": len(sdk_files),
+            "syntax_errors": len(syntax_errors),
+        })
 
         return {
             "sdk_files": sdk_files,
             "syntax_errors": syntax_errors,
             "messages": [AIMessage(content=summary, name="engineer")],
-            "sse_events": [{
-                "type": "engineer_done",
-                "file_count": len(sdk_files),
-                "syntax_errors": len(syntax_errors)
-            }]
+            "sse_events": sse_events,
         }
 
     except Exception as e:

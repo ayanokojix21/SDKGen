@@ -51,21 +51,44 @@ SDK FILES: {sdk_files}
         
         passed_count = report.summary.passed
         failed_count = report.summary.failed
+        total_count = passed_count + failed_count
         recommendation = report.summary.recommendation
+
+        # Emit per-test events for frontend rendering
+        sse_events = []
+        for test in report.test_plan:
+            if test.status == "pass":
+                sse_events.append({
+                    "type": "qa_test_pass",
+                    "endpoint": test.target,
+                    "status_code": 200,
+                })
+            elif test.status == "fail":
+                sse_events.append({
+                    "type": "qa_test_fail",
+                    "endpoint": test.target,
+                    "expected": "pass",
+                    "actual": "fail",
+                    "error": test.details or test.fix_suggestion or "Test failed",
+                })
 
         summary_text = (
             f"QA complete. Recommendation: {recommendation}. "
             f"Passed: {passed_count}, Failed: {failed_count}."
         )
 
+        # Final qa_done summary event
+        sse_events.append({
+            "type": "qa_done",
+            "passed": passed_count,
+            "failed": failed_count,
+            "total": total_count,
+            "recommendation": recommendation,
+        })
+
         return {
             "messages": [AIMessage(content=summary_text, name="qa_tester")],
-            "sse_events": [{
-                "type": "qa_done",
-                "passed": passed_count,
-                "failed": failed_count,
-                "recommendation": recommendation
-            }],
+            "sse_events": sse_events,
             "status": "success" if failed_count == 0 else "running"
         }
 

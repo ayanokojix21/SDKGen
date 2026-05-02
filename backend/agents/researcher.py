@@ -85,6 +85,13 @@ async def researcher_node(state: dict) -> dict:
         HumanMessage(content=summary_msg)
     ])
 
+    # ── Emit researcher_done summary ───────────────────────────────────────
+    sse_events.append({
+        "type": "researcher_done",
+        "endpoint_count": "?",  # Not yet known; architect determines this
+        "page_count": len(scraped_this_run) + len(already_crawled),
+    })
+
     return {
         "vector_store_collection": collection_name,
         "research_summary": summary.model_dump_json(),

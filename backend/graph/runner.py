@@ -90,12 +90,19 @@ async def run_graph(job_id: str, initial_state: dict) -> None:
     except asyncio.CancelledError:
         log.warning("[runner] task cancelled for job=%s", job_id)
         await job_manager.put_error(job_id, "Job was cancelled.")
-        raise   # let asyncio handle the cancellation
 
     except Exception as exc:
         log.exception("[runner] unhandled exception for job=%s: %s", job_id, exc)
         await job_manager.put_error(job_id, f"Internal error: {exc}")
 
+    finally:
+        # Give frontend time to consume final events before destroying the queue.
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            pass  # Server shutting down — clean up immediately
+        job_manager.remove_queue(job_id)
+        log.info("[runner] cleaned up queue for job=%s", job_id)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Internal helpers

@@ -46,7 +46,7 @@ async def architect_node(state: dict) -> dict:
     # ── Phase 2: Generate Schema (Structured Output) ──────────────────────
     structured_llm = get_structured_llm(ApiSchema)
     
-    sse_events = [{"type": "architect_starting", "context_length": len(context)}]
+    sse_events = [{"type": "architect_validating", "context_length": len(context)}]
 
     try:
         api_schema_obj: ApiSchema = await structured_llm.ainvoke([
@@ -60,6 +60,10 @@ async def architect_node(state: dict) -> dict:
         validation = validate_schema(api_schema)
         api_schema = validation["schema"]
         schema_fixes = validation["fixes"]
+
+        # Emit per-fix events for the frontend
+        for fix in schema_fixes:
+            sse_events.append({"type": "architect_fix", "fix": fix})
         
         summary = (
             f"API schema generated: {len(api_schema['endpoints'])} endpoints. "
@@ -73,7 +77,7 @@ async def architect_node(state: dict) -> dict:
             "sse_events": sse_events + [{
                 "type": "architect_done",
                 "endpoint_count": len(api_schema['endpoints']),
-                "auto_fixes": len(schema_fixes)
+                "fixes_count": len(schema_fixes),
             }]
         }
 

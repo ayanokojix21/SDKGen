@@ -26,6 +26,21 @@ Rules:
 - Use 'end' to stop the process.
 """
 
+# Agents in the "forward" direction of the pipeline — used for reroute detection
+_PIPELINE_ORDER = ["researcher", "architect", "engineer", "qa_tester", "packager", "end"]
+
+def _is_reroute(previous_agent: str | None, next_agent: str) -> bool:
+    """Detect if the supervisor is routing backwards in the pipeline."""
+    if not previous_agent or previous_agent == next_agent:
+        return False
+    try:
+        prev_idx = _PIPELINE_ORDER.index(previous_agent)
+        next_idx = _PIPELINE_ORDER.index(next_agent)
+        return next_idx < prev_idx  # Going backwards = reroute
+    except ValueError:
+        return False
+
+
 async def supervisor_node(state: dict) -> dict:
     """
     Supervisor node using structured output.
@@ -37,7 +52,11 @@ async def supervisor_node(state: dict) -> dict:
         return {
             "status": "failed",
             "failure_reason": "Budget limit exceeded ($2.00)",
-            "next_agent": "end"
+            "next_agent": "end",
+            "sse_events": [{
+                "type": "safety_cutoff",
+                "message": "Budget limit exceeded ($2.00) — stopping generation.",
+            }],
         }
 
     summary = build_state_summary(state)
@@ -48,24 +67,54 @@ async def supervisor_node(state: dict) -> dict:
             HumanMessage(content=f"Current State:\n{summary}")
         ])
         
-        logger.info(f"Supervisor Decision: {decision.next_agent} | {decision.reasoning}")
+        # Groq/Llama sometimes returns capitalized Enum values (e.g., "Researcher")
+        next_agent = decision.next_agent.lower() if decision.next_agent else "end"
+        
+        logger.info(f"Supervisor Decision: {next_agent} | {decision.reasoning}")
+
+        # Detect the previous agent from recent messages
+        previous_agent = None
+        for msg in reversed(state.get("messages", [])):
+            name = getattr(msg, "name", None)
+            if name and name != "supervisor":
+                previous_agent = name
+                break
+
+        sse_events = []
+
+        # Emit reroute event if routing backwards
+        if _is_reroute(previous_agent, next_agent):
+            sse_events.append({
+                "type": "reroute",
+                "from": previous_agent,
+                "to": next_agent,
+                "reason": decision.reasoning,
+            })
+
+        # Always emit the standard supervisor event
+        sse_events.append({
+            "type": "supervisor",
+            "routing_to": next_agent,
+            "reasoning": decision.reasoning,
+            "instruction": decision.instruction,
+            "iteration": state["iteration_count"] + 1,
+        })
         
         return {
-            "next_agent": decision.next_agent,
+            "next_agent": next_agent,
             "instruction": decision.instruction,
             "iteration_count": state["iteration_count"] + 1,
-            "messages": [AIMessage(content=f"Routing to {decision.next_agent}: {decision.instruction}", name="supervisor")],
-            "sse_events": [{
-                "type": "supervisor",
-                "routing_to": decision.next_agent,
-                "reasoning": decision.reasoning,
-                "instruction": decision.instruction
-            }]
+            "messages": [AIMessage(content=f"Routing to {next_agent}: {decision.instruction}", name="supervisor")],
+            "sse_events": sse_events,
         }
     except Exception as e:
         logger.error(f"Supervisor failed: {e}")
         return {
             "next_agent": "end",
             "status": "failed",
-            "failure_reason": f"Supervisor error: {str(e)}"
+            "failure_reason": f"Supervisor error: {str(e)}",
+            "sse_events": [{
+                "type": "safety_cutoff",
+                "message": f"Supervisor error: {str(e)}",
+            }],
         }

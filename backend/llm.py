@@ -14,6 +14,9 @@ log = logging.getLogger(__name__)
 COSTS = {
     "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
     "llama-3.3-70b-versatile": {"input": 0.59, "output": 0.79},
+    "openai/gpt-oss-120b": {"input": 0.59, "output": 0.79},
+    "qwen/qwen3-32b": {"input": 0.59, "output": 0.79},
+    "meta-llama/llama-4-scout-17b-16e-instruct": {"input": 0.05, "output": 0.08},
     "llama-3.1-8b-instant": {"input": 0.05, "output": 0.08},
 }
 
@@ -53,14 +56,61 @@ _token_tracker = TokenTrackingCallback()
 
 def get_llm(temperature: float = 0.0, callbacks: Optional[list] = None):
     """
-    Returns the primary Gemini LLM with Groq fallbacks.
-    Injects TokenTrackingCallback by default for cost tracking.
+    Returns the primary LLM with fallbacks.
+    Primary: Groq (llama-3.3-70b-versatile) — fast, free tier available.
+    Fallback: Gemini (gemini-2.0-flash) — when Groq is unavailable.
     """
     cbs = [_token_tracker]
     if callbacks:
         cbs.extend(callbacks)
 
-    primary_llm = ChatGoogleGenerativeAI(
+    # Primary: Groq
+    if settings.GROQ_API_KEY:
+        # Best 5 models from GroqCloud in fallback order for resilient execution
+        groq_models = [
+            "llama-3.3-70b-versatile",
+            "openai/gpt-oss-120b",
+            "qwen/qwen3-32b",
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+            "llama-3.1-8b-instant"
+        ]
+
+        primary_llm = ChatGroq(
+            model=groq_models[0],
+            api_key=settings.GROQ_API_KEY,
+            temperature=temperature,
+            max_retries=1,
+            callbacks=cbs,
+        )
+
+        fallbacks = []
+
+        # Groq model fallbacks
+        for model_name in groq_models[1:]:
+            fallbacks.append(
+                ChatGroq(
+                    model=model_name,
+                    api_key=settings.GROQ_API_KEY,
+                    temperature=temperature,
+                    max_retries=1,
+                )
+            )
+
+        # Fallback 2: Gemini (if key exists)
+        if settings.GOOGLE_API_KEY:
+            fallbacks.append(
+                ChatGoogleGenerativeAI(
+                    model=settings.GEMINI_MODEL,
+                    google_api_key=settings.GOOGLE_API_KEY,
+                    temperature=temperature,
+                    max_retries=0,
+                )
+            )
+
+        return primary_llm.with_fallbacks(fallbacks) if fallbacks else primary_llm
+
+    # No Groq key — use Gemini as primary (original behavior)
+    return ChatGoogleGenerativeAI(
         model=settings.GEMINI_MODEL,
         google_api_key=settings.GOOGLE_API_KEY,
         temperature=temperature,
@@ -68,22 +118,57 @@ def get_llm(temperature: float = 0.0, callbacks: Optional[list] = None):
         callbacks=cbs,
     )
 
-    if not settings.GROQ_API_KEY:
-        return primary_llm
-
-    groq_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-    fallbacks = [
-        ChatGroq(model=m, api_key=settings.GROQ_API_KEY, temperature=temperature, max_retries=0)
-        for m in groq_models
-    ]
-
-    return primary_llm.with_fallbacks(fallbacks)
-
 
 def get_structured_llm(schema: Type[BaseModel], temperature: float = 0.0):
     """
     Returns an LLM chain that outputs a Pydantic object.
+    Each model in the fallback chain has structured output applied individually,
+    so fallbacks also return properly typed Pydantic objects.
     """
-    llm = get_llm(temperature=temperature)
-    # Gemini 2.0 Flash supports 'json_schema' which is the most reliable
-    return llm.with_structured_output(schema, method="json_schema")
+    cbs = [_token_tracker]
+
+    if settings.GROQ_API_KEY:
+        groq_models = [
+            "llama-3.3-70b-versatile",
+            "openai/gpt-oss-120b",
+            "qwen/qwen3-32b",
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+            "llama-3.1-8b-instant",
+        ]
+
+        # Build structured LLMs for each Groq model
+        structured_models = []
+        for i, model_name in enumerate(groq_models):
+            llm = ChatGroq(
+                model=model_name,
+                api_key=settings.GROQ_API_KEY,
+                temperature=temperature,
+                max_retries=1,
+                callbacks=cbs if i == 0 else [],
+            )
+            structured_models.append(llm.with_structured_output(schema))
+
+        # Add Gemini as final fallback if available
+        if settings.GOOGLE_API_KEY:
+            gemini = ChatGoogleGenerativeAI(
+                model=settings.GEMINI_MODEL,
+                google_api_key=settings.GOOGLE_API_KEY,
+                temperature=temperature,
+                max_retries=0,
+            )
+            structured_models.append(gemini.with_structured_output(schema))
+
+        primary = structured_models[0]
+        fallbacks = structured_models[1:]
+
+        return primary.with_fallbacks(fallbacks) if fallbacks else primary
+
+    # No Groq key — use Gemini
+    gemini = ChatGoogleGenerativeAI(
+        model=settings.GEMINI_MODEL,
+        google_api_key=settings.GOOGLE_API_KEY,
+        temperature=temperature,
+        max_retries=0,
+        callbacks=cbs,
+    )
+    return gemini.with_structured_output(schema)

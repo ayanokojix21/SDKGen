@@ -1,63 +1,73 @@
 """
-Syntax Checker — Upgraded to use E2B Sandbox for secure, high-fidelity validation.
+Syntax Checker — Validates generated SDK code.
+Uses local Python compile() for Python files.
+Falls back to basic checks for other languages.
 """
 
-import os
+import ast
 import logging
-from e2b_code_interpreter import Sandbox
 
 logger = logging.getLogger(__name__)
 
+
 async def check_syntax(files: dict[str, str], language: str) -> list[dict]:
     """
-    Check syntax of all generated SDK files using an isolated E2B Sandbox.
+    Check syntax of all generated SDK files.
+    Uses Python's built-in ast.parse for Python files (fast, no external deps).
     """
-    if not os.environ.get("E2B_API_KEY"):
-        logger.warning("E2B_API_KEY missing, falling back to local basic checks")
-        return _local_fallback_check(files, language)
-
     results = []
-    
-    # Initialize E2B Sandbox
-    with Sandbox() as sandbox:
-        # ── Write files to sandbox ──────────────────────────────────────────
-        for filename, content in files.items():
-            sandbox.files.write(filename, content)
-        
-        # ── Run validation based on language ────────────────────────────────
-        for filename, content in files.items():
-            if not content.strip():
-                results.append({"file": filename, "valid": False, "errors": ["File is empty"]})
-                continue
 
-            if language == "python" and filename.endswith(".py"):
-                # Use python's compile tool
-                proc = sandbox.process.start(f"python3 -m py_compile {filename}")
-                proc.wait()
-                if proc.exit_code != 0:
-                    results.append({"file": filename, "valid": False, "errors": [proc.stderr]})
-                else:
-                    results.append({"file": filename, "valid": True, "errors": []})
+    for filename, content in files.items():
+        if not content or not content.strip():
+            results.append({"file": filename, "valid": False, "errors": ["File is empty"]})
+            continue
 
-            elif language == "typescript" and filename.endswith((".ts", ".tsx")):
-                # Run tsc --noEmit
-                # Note: This requires typescript installed in the sandbox. 
-                # E2B default sandbox usually has it, or we can install it.
-                proc = sandbox.process.start(f"npx -y typescript tsc --noEmit {filename}")
-                proc.wait()
-                if proc.exit_code != 0:
-                    results.append({"file": filename, "valid": False, "errors": [proc.stderr]})
-                else:
-                    results.append({"file": filename, "valid": True, "errors": []})
-            else:
+        if language == "python" and filename.endswith(".py"):
+            try:
+                ast.parse(content, filename=filename)
                 results.append({"file": filename, "valid": True, "errors": []})
+            except SyntaxError as e:
+                error_msg = f"Line {e.lineno}: {e.msg}"
+                results.append({"file": filename, "valid": False, "errors": [error_msg]})
+
+        elif language == "typescript" and filename.endswith((".ts", ".tsx")):
+            # Basic bracket/brace balance check for TypeScript
+            errors = _check_brackets(content, filename)
+            results.append({
+                "file": filename,
+                "valid": len(errors) == 0,
+                "errors": errors,
+            })
+
+        else:
+            # Non-code files (README.md, etc.) — always valid
+            results.append({"file": filename, "valid": True, "errors": []})
 
     return results
 
-def _local_fallback_check(files: dict[str, str], language: str) -> list[dict]:
-    """Basic local checks if E2B is unavailable."""
-    # ... (Implementation similar to old syntax_check.py)
-    return [{"file": f, "valid": True, "errors": []} for f in files]
+
+def _check_brackets(content: str, filename: str) -> list[str]:
+    """Basic bracket/brace/paren balance check."""
+    stack = []
+    pairs = {')': '(', ']': '[', '}': '{'}
+    errors = []
+
+    for i, ch in enumerate(content):
+        if ch in '([{':
+            stack.append((ch, i))
+        elif ch in ')]}':
+            if not stack:
+                errors.append(f"Unmatched '{ch}' at position {i}")
+            elif stack[-1][0] != pairs[ch]:
+                errors.append(f"Mismatched '{ch}' at position {i}")
+            else:
+                stack.pop()
+
+    for ch, pos in stack:
+        errors.append(f"Unclosed '{ch}' at position {pos}")
+
+    return errors
+
 
 def format_errors_for_retry(results: list[dict]) -> str:
     lines = ["The following syntax errors were found in your generated files:\n"]

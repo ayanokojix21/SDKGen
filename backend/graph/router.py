@@ -45,6 +45,20 @@ def route_next(state: dict) -> str:
 
     # ── Route to whatever the Supervisor decided ──────────────────────────────
     next_agent = state.get("next_agent", "end")
+    if next_agent:
+        # Normalize: lowercase, strip whitespace, replace spaces with underscores
+        next_agent = next_agent.lower().strip().replace(" ", "_")
+
+    # Common LLM aliases → canonical names
+    _aliases = {
+        "qa": "qa_tester",
+        "qatester": "qa_tester",
+        "qa_test": "qa_tester",
+        "tester": "qa_tester",
+        "research": "researcher",
+        "package": "packager",
+    }
+    next_agent = _aliases.get(next_agent, next_agent)
 
     # Validate the agent name
     valid = {"researcher", "architect", "engineer", "qa_tester", "packager", "end"}

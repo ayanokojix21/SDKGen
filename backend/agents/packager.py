@@ -106,23 +106,51 @@ async def packager_node(state: dict) -> dict:
         issues_count=issues_fixed,
     )
 
-    # ── Build result ──────────────────────────────────────────────────────────
+    # ── Build SSE events ──────────────────────────────────────────────────────
     summary = f"SDK packaged: {len(final_files)} files ready for download."
     log.info("[packager] %s", summary)
 
-    sse_update = emit_sse(
-        "packager_done",
-        file_count=len(final_files),
-        files=list(final_files.keys()),
-        narration=narration_text,
-    )
+    sse_events = []
+
+    # Emit file_ready for each file (VS Code file injection needs content)
+    for filename, content in final_files.items():
+        sse_events.append({
+            "type": "file_ready",
+            "filename": filename,
+            "content": content,
+        })
+
+    # Packager summary
+    sse_events.append({
+        "type": "packager_done",
+        "file_count": len(final_files),
+        "files": list(final_files.keys()),
+    })
+
+    # Narration event (for TTS in popup)
+    if narration_text:
+        sse_events.append({
+            "type": "narrate",
+            "text": narration_text,
+        })
+
+    # Complete event (triggers download/VS Code buttons in popup)
+    sse_events.append({
+        "type": "complete",
+        "summary": {
+            "endpoints": endpoint_count,
+            "files": len(final_files),
+            "language": language,
+            "api_name": api_name,
+        },
+    })
 
     return {
         "final_files": final_files,
         "narration_text": narration_text,
         "status": "success",
         "messages": [AIMessage(content=summary, name="packager")],
-        **sse_update,
+        "sse_events": sse_events,
     }
 
 

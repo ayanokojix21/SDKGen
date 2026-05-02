@@ -1,6 +1,7 @@
 /**
  * background.js — Docs to Code Chrome Extension
  * Dev 4: Service worker — VS Code WebSocket probe, port management, bridge coordination.
+ *        NOW ALSO: owns the SSE EventSource so it survives popup close/reopen.
  *
  * Runs as a Manifest v3 service worker.
  */
@@ -10,11 +11,19 @@
 // ─── Constants ────────────────────────────────────────────────────────────────
 const WS_PORTS = [47291, 47292, 47293];
 const WS_PROBE_TIMEOUT_MS = 100;
+const API_BASE = 'http://localhost:8000';
 
 // ─── State (in-memory, resets on service worker restart) ─────────────────────
 let wsConnection = null;
 let activePort = null;
 let connectionStatus = 'disconnected'; // 'connected' | 'disconnected'
+
+// ─── SSE state ────────────────────────────────────────────────────────────────
+let activeEventSource = null;
+let activeJobId = null;
+let sseEventBuffer = [];          // Buffer events so popup can replay on open
+const MAX_BUFFER_SIZE = 500;      // Cap buffer to prevent memory issues
+let jobFinished = false;          // True when 'done' sentinel received
 
 // ─── WebSocket probe ──────────────────────────────────────────────────────────
 
@@ -134,6 +143,100 @@ function handleWSError(err) {
   console.warn('[DocsToCode BG] WS error:', err);
 }
 
+// ─── SSE management (lives in background, survives popup close) ──────────────
+
+/**
+ * Opens an EventSource to the backend SSE stream.
+ * Called by the popup via message passing.
+ * The background worker keeps listening even if the popup closes.
+ */
+function connectSSE(jobId) {
+  // Close any existing stream
+  if (activeEventSource) {
+    activeEventSource.close();
+    activeEventSource = null;
+  }
+
+  activeJobId = jobId;
+  jobFinished = false;
+  sseEventBuffer = [];
+
+  console.log(`[DocsToCode BG] Opening SSE for job=${jobId}`);
+
+  const es = new EventSource(`${API_BASE}/generate/stream?job_id=${encodeURIComponent(jobId)}`);
+  activeEventSource = es;
+
+  es.addEventListener('message', (e) => {
+    let data;
+    try {
+      data = JSON.parse(e.data);
+    } catch {
+      return;
+    }
+
+    // Buffer the event for popup replay
+    if (sseEventBuffer.length < MAX_BUFFER_SIZE) {
+      sseEventBuffer.push(data);
+    }
+
+    // Forward to popup immediately (if open)
+    broadcastSSEToPopup(data);
+
+    const type = data.type || '';
+
+    // Handle terminal events
+    if (type === 'done') {
+      jobFinished = true;
+      es.close();
+      activeEventSource = null;
+      console.log(`[DocsToCode BG] SSE done for job=${jobId}`);
+      // Persist completion
+      chrome.storage.session.set({ activeJobId: null });
+      return;
+    }
+
+    if (type === 'error' || type === 'safety_cutoff' || data.status === 'failed') {
+      jobFinished = true;
+      es.close();
+      activeEventSource = null;
+      console.log(`[DocsToCode BG] SSE error/failed for job=${jobId}: ${data.message || ''}`);
+      chrome.storage.session.set({ activeJobId: null });
+      return;
+    }
+  });
+
+  es.addEventListener('error', () => {
+    if (es.readyState === EventSource.CLOSED) {
+      console.log(`[DocsToCode BG] SSE connection closed for job=${jobId}`);
+      // If the job wasn't finished, try to reconnect after a delay
+      if (!jobFinished && activeJobId === jobId) {
+        console.log(`[DocsToCode BG] Attempting SSE reconnect in 3s for job=${jobId}`);
+        setTimeout(() => {
+          if (!jobFinished && activeJobId === jobId) {
+            connectSSE(jobId);
+          }
+        }, 3000);
+      }
+    }
+  });
+
+  // Persist active job
+  chrome.storage.session.set({ activeJobId: jobId });
+}
+
+/**
+ * Broadcast an SSE event to the popup via chrome.runtime messaging.
+ */
+function broadcastSSEToPopup(data) {
+  chrome.runtime.sendMessage({
+    type: 'SSE_EVENT',
+    data: data,
+    jobId: activeJobId,
+  }).catch(() => {
+    // Popup not open — that's fine, events are buffered
+  });
+}
+
 // ─── Message broadcasting ─────────────────────────────────────────────────────
 
 /**
@@ -142,10 +245,7 @@ function handleWSError(err) {
  */
 async function broadcastToPopup(msg) {
   try {
-    const views = chrome.extension.getViews({ type: 'popup' });
-    for (const view of views) {
-      view.postMessage(msg, '*');
-    }
+    await chrome.runtime.sendMessage(msg);
   } catch (_) {
     // Popup may not be open — ignore
   }
@@ -162,6 +262,39 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ status: connectionStatus, port: activePort });
       });
       return true; // async
+    }
+
+    // Popup requests SSE connection for a new job
+    case 'START_SSE': {
+      const { jobId } = message;
+      connectSSE(jobId);
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    // Popup opened and wants to catch up on buffered events
+    case 'GET_SSE_STATE': {
+      sendResponse({
+        jobId: activeJobId,
+        finished: jobFinished,
+        buffer: sseEventBuffer,
+        connected: activeEventSource !== null && activeEventSource.readyState === EventSource.OPEN,
+      });
+      return false;
+    }
+
+    // Popup wants to stop the SSE stream
+    case 'STOP_SSE': {
+      if (activeEventSource) {
+        activeEventSource.close();
+        activeEventSource = null;
+      }
+      activeJobId = null;
+      jobFinished = false;
+      sseEventBuffer = [];
+      chrome.storage.session.set({ activeJobId: null });
+      sendResponse({ ok: true });
+      return false;
     }
 
     // Popup wants to send new_job via WS

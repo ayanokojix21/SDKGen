@@ -21,20 +21,27 @@ const AGENT_COLOURS = {
   researcher_crawl_plan: '#60a5fa',
   researcher_scraping: '#60a5fa',
   researcher_scraped:  '#60a5fa',
+  researcher_serper:   '#60a5fa',
   researcher_done:     '#60a5fa',
   researcher_analysing:'#60a5fa',
   architect:           '#34d399',
   architect_validating:'#34d399',
   architect_fix:       '#34d399',
   architect_done:      '#34d399',
+  architect_error:     '#f87171',
   engineer:            '#86efac',
   engineer_writing:    '#86efac',
   engineer_file_done:  '#86efac',
+  engineer_done:       '#86efac',
   engineer_syntax_error:'#f87171',
+  engineer_error:      '#f87171',
   qa_test_pass:        '#4ade80',
   qa_test_fail:        '#f87171',
   qa_done:             '#4ade80',
+  qa_error:            '#f87171',
   packager:            '#94a3b8',
+  packager_done:       '#94a3b8',
+  packager_fail:       '#f87171',
   file_ready:          '#94a3b8',
   narrate:             '#a78bfa',
   complete:            '#4ade80',
@@ -309,6 +316,9 @@ function updateOverlayPanel(event) {
   const type = event.type || event.event || '';
   const colour = AGENT_COLOURS[type] || '#e6edf3';
 
+  // Skip the 'done' sentinel
+  if (type === 'done') return;
+
   let text = '';
 
   switch (type) {
@@ -320,23 +330,52 @@ function updateOverlayPanel(event) {
       overlayPanel.classList.add('dtc-reroute-flash');
       setTimeout(() => overlayPanel.classList.remove('dtc-reroute-flash'), 2000);
       break;
-    case 'researcher_crawl_plan':
-      text = `🔍 Crawl plan: ${event.selected_count || 0} pages selected`;
+    case 'researcher_analysing':
+      text = `🔍 Analysing: ${event.goal || ''}`;
       break;
+    case 'researcher_crawl_plan': {
+      const selCount = event.selected ? event.selected.length : (event.selected_count || 0);
+      text = `📋 Crawl plan: ${selCount} pages selected`;
+      break;
+    }
     case 'researcher_scraping':
       text = `🌐 Scraping: ${event.url || ''}`;
       break;
+    case 'researcher_serper':
+      text = `🔎 Web search: ${event.query || ''}`;
+      break;
     case 'researcher_done':
-      text = `✓ Research done — ${event.endpoint_count || '?'} endpoints`;
+      text = `✓ Research done — ${event.page_count || '?'} pages`;
+      break;
+    case 'architect_validating':
+      text = `🔬 Validating schema…`;
+      break;
+    case 'architect_fix':
+      text = `🔧 Fix: ${event.fix || ''}`;
       break;
     case 'architect_done':
       text = `✓ Schema validated — ${event.fixes_count || 0} fixes`;
       break;
+    case 'architect_error':
+      text = `✕ Architect error: ${event.error || ''}`;
+      break;
+    case 'engineer_writing':
+      text = `✍ Writing ${event.filename || ''}…`;
+      break;
     case 'engineer_file_done':
-      text = `✍ ${event.filename || 'file'} (${event.line_count || '?'} lines)`;
+      text = `✓ ${event.filename || 'file'} (${event.line_count || '?'} lines)`;
+      break;
+    case 'engineer_done':
+      text = `📦 SDK: ${event.file_count || '?'} files`;
+      break;
+    case 'engineer_syntax_error':
+      text = `✕ Syntax: ${event.filename || ''} — ${event.error || ''}`;
+      break;
+    case 'engineer_error':
+      text = `✕ Engineer error: ${event.error || ''}`;
       break;
     case 'qa_test_pass':
-      text = `✓ ${event.endpoint || ''} → ${event.status_code || 200} (${event.latency_ms || '?'}ms)`;
+      text = `✓ ${event.endpoint || ''} → ${event.status_code || 200}`;
       break;
     case 'qa_test_fail':
       text = `✗ ${event.endpoint || ''} → ${event.actual || event.status_code || 'fail'}`;
@@ -344,8 +383,17 @@ function updateOverlayPanel(event) {
     case 'qa_done':
       text = `QA: ${event.passed || 0}/${event.total || 0} passed`;
       break;
+    case 'qa_error':
+      text = `✕ QA error: ${event.error || ''}`;
+      break;
     case 'file_ready':
       text = `📁 ${event.filename || 'file'} → VS Code`;
+      break;
+    case 'packager_done':
+      text = `📦 ${event.file_count || '?'} files packaged`;
+      break;
+    case 'packager_fail':
+      text = `✕ Packager failed: ${event.reason || ''}`;
       break;
     case 'narrate':
       text = `🔊 ${(event.text || '').slice(0, 60)}…`;
@@ -354,7 +402,7 @@ function updateOverlayPanel(event) {
       text = `🎉 SDK complete!`;
       break;
     case 'safety_cutoff':
-      text = `⚠ Safety cutoff reached`;
+      text = `⚠ ${event.message || 'Safety cutoff reached'}`;
       break;
     default:
       text = `${type}: ${JSON.stringify(event).slice(0, 60)}`;
