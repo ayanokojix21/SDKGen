@@ -17,6 +17,17 @@ def test_get_llm_instantiation(monkeypatch):
     monkeypatch.setattr(backend.config.settings, "GOOGLE_API_KEY", "test_key")
     monkeypatch.setattr(backend.config.settings, "GROQ_API_KEY", "")
 
+    # Mock the LLM to prevent network calls during initialization
+    from unittest.mock import MagicMock
+    
+    def mock_init(*args, **kwargs):
+        mock = MagicMock()
+        mock.temperature = kwargs.get("temperature", 0.5)
+        mock.callbacks = kwargs.get("callbacks", [])
+        return mock
+        
+    monkeypatch.setattr("backend.llm.ChatGoogleGenerativeAI", mock_init)
+
     from backend.llm import get_llm, TokenTrackingCallback
     llm = get_llm(temperature=0.5)
 
@@ -33,6 +44,11 @@ def test_get_structured_llm_instantiation(monkeypatch):
     import backend.config
     monkeypatch.setattr(backend.config.settings, "GOOGLE_API_KEY", "test_key")
     monkeypatch.setattr(backend.config.settings, "GROQ_API_KEY", "")
+
+    from unittest.mock import MagicMock
+    mock_llm_class = MagicMock()
+    mock_llm_class.return_value.with_structured_output.return_value = MagicMock()
+    monkeypatch.setattr("backend.llm.ChatGoogleGenerativeAI", mock_llm_class)
 
     from backend.llm import get_structured_llm
     llm = get_structured_llm(DummySchema)

@@ -173,16 +173,7 @@ def _validate_endpoint(
         fixes.append(f"{prefix}: Prepended '/' to path: '{path}' → '/{path}'")
         path = "/" + path
 
-    # ── full_url ─────────────────────────────────────────────────────────
-    if base_url and path:
-        expected_full_url = base_url + path
-        current_full_url = ep.get("full_url", "")
-        if current_full_url != expected_full_url:
-            ep["full_url"] = expected_full_url
-            if current_full_url:
-                fixes.append(f"{prefix}: Fixed full_url: '{current_full_url}' → '{expected_full_url}'")
-            else:
-                fixes.append(f"{prefix}: Generated full_url: '{expected_full_url}'")
+    # ── Removed full_url logic to match Pydantic schema ─────────────────
 
     # ── path_params vs path ──────────────────────────────────────────────
     path_param_pattern = re.compile(r"\{(\w+)\}")
@@ -217,13 +208,13 @@ def _validate_endpoint(
             pp["required"] = True
             fixes.append(f"{prefix}: Set path_param '{pp.get('name')}' to required=True")
 
-    # ── body on GET/DELETE ───────────────────────────────────────────────
-    if method in ("GET", "DELETE") and ep.get("body") is not None:
-        ep["body"] = None
-        fixes.append(f"{prefix}: Removed body from {method} endpoint")
+    # ── request_body on GET/DELETE ───────────────────────────────────────
+    if method in ("GET", "DELETE") and ep.get("request_body") is not None:
+        ep["request_body"] = None
+        fixes.append(f"{prefix}: Removed request_body from {method} endpoint")
 
     # ── Ensure arrays exist ──────────────────────────────────────────────
-    for field in ("headers", "query_params", "path_params"):
+    for field in ("query_params", "path_params"):
         if not isinstance(ep.get(field), list):
             ep[field] = ep.get(field) if isinstance(ep.get(field), list) else []
 

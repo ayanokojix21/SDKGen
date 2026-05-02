@@ -106,6 +106,34 @@ async def packager_node(state: dict) -> dict:
         issues_count=issues_fixed,
     )
 
+    # ── Generate ElevenLabs audio (non-critical) ─────────────────────────────
+    narration_audio_url = None
+    if narration_text:
+        from backend.tools.elevenlabs_tts import generate_narration_audio
+        narration_audio_url = await generate_narration_audio(
+            text=narration_text,
+            job_id=state.get("job_id", ""),
+        )
+
+    # ── Create Conversational Doc Reader Agent (non-critical) ─────────────────
+    assistant_agent_id = None
+    from backend.tools.elevenlabs_agent import create_doc_reader_agent
+    
+    # Try to find the main client code to upload as Knowledge Base
+    client_code = ""
+    for filename, content in final_files.items():
+        if "client.py" in filename or "client.ts" in filename:
+            client_code = content
+            break
+            
+    assistant_agent_id = await create_doc_reader_agent(
+        api_name=api_name,
+        language=language,
+        job_id=state.get("job_id", ""),
+        sdk_client_code=client_code,
+        schema_json=json.dumps(api_schema)
+    )
+
     # ── Build SSE events ──────────────────────────────────────────────────────
     summary = f"SDK packaged: {len(final_files)} files ready for download."
     log.info("[packager] %s", summary)

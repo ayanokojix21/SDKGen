@@ -22,6 +22,7 @@ Rules:
 2. Include docstrings and type hints.
 3. Ensure the README explains how to use the SDK and how to provide authentication.
 4. If fixing an SDK, pay close attention to the provided test results and documentation context.
+5. You MUST implement robust retry logic with exponential backoff for 429 (Too Many Requests) and 5xx (Server Error) HTTP status codes in the SDK client.
 """
 
 async def engineer_node(state: dict) -> dict:

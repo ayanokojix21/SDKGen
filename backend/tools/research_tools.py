@@ -14,9 +14,6 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Initialize Nomic Embeddings
-embeddings = NomicEmbeddings(model="nomic-embed-text-v1.5")
-
 def get_vector_store(collection_name: str):
     """
     Returns a MongoDBAtlasVectorSearch instance for a specific job collection.
@@ -24,6 +21,9 @@ def get_vector_store(collection_name: str):
     client = MongoClient(settings.MONGODB_URI)
     db = client["sdkgen_research"]
     collection = db[collection_name]
+    
+    # Lazy initialization to prevent import crashes if NOMIC_API_KEY is missing
+    embeddings = NomicEmbeddings(model="nomic-embed-text-v1.5")
     
     return MongoDBAtlasVectorSearch(
         collection=collection,
