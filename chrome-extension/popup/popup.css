@@ -585,3 +585,68 @@ html, body {
 .hidden {
   display: none !important;
 }
+
+/* ─── Assistant Section ────────────────────────────────────────────────────── */
+.assistant-section {
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.assistant-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.assistant-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ask-sdk-btn {
+  padding: 6px 12px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all var(--transition);
+}
+
+.ask-sdk-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.ask-sdk-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  animation: pulse-border 2s infinite;
+}
+
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 0 0 rgba(167, 139, 250, 0.4); }
+  70% { box-shadow: 0 0 0 4px rgba(167, 139, 250, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(167, 139, 250, 0); }
+}
+
+.assistant-status {
+  font-size: 10px;
+  color: var(--text-muted);
+}

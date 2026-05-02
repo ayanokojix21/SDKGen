@@ -93,6 +93,21 @@
     </div>
   </div>
 
+  <!-- ── Conversational Assistant (Hidden until generated) ────────── -->
+  <div id="assistant-section" class="assistant-section hidden">
+    <div class="assistant-header">
+      <span class="assistant-icon">🤖</span>
+      <span class="assistant-title">SDK Assistant</span>
+    </div>
+    <div class="assistant-body">
+      <button id="ask-sdk-btn" class="ask-sdk-btn">
+        <span class="mic-icon">🎤</span>
+        <span id="ask-sdk-text">Ask about this SDK</span>
+      </button>
+      <span id="assistant-status" class="assistant-status"></span>
+    </div>
+  </div>
+
   <!-- ── Bottom bar ─────────────────────────────────────────────── -->
   <footer class="bottom-bar">
     <div class="bottom-left">
@@ -108,6 +123,7 @@
     </div>
   </footer>
 
+  <script src="../lib/convai.bundle.js"></script>
   <script src="../lib/tts.js"></script>
   <script src="../lib/api.js"></script>
   <script src="../lib/bridge.js"></script>
