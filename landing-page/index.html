@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SDKGen | Turn any API docs into a live-tested SDK</title>
+    <!-- Google Fonts: Space Grotesk + Space Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <!-- Navigation Bar -->
+    <nav class="site-nav">
+      <div class="nav-container">
+        <div class="nav-logo">SDKGen</div>
+        <div class="nav-links">
+          <a href="#how-it-works">How It Works</a>
+          <a href="#agents">Agents</a>
+          <a href="#demo">Demo</a>
+          <a href="#setup">Setup</a>
+          <a href="https://github.com/ayanokojix21/SDKGen" target="_blank" class="nav-btn box-shadow" style="display: flex; align-items: center;">
+            <svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 8px;">
+              <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"></path>
+            </svg>
+            GitHub
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- 1. Hero Section -->
+    <header id="hero" class="section-hero scroll-anim">
+      <div class="hero-content">
+        <h1 class="hero-headline">Turn any API docs into a live-tested SDK. <span class="accent-bg">Instantly.</span></h1>
+        <p class="hero-subheadline">An agentic multi-agent LLM system that eliminates the integration tax.</p>
+        
+        <div class="terminal-ticker box-shadow">
+          <span class="ticker-text">> Reading documentation...</span><span class="cursor">_</span>
+        </div>
+
+        <div class="hero-ctas">
+          <button class="btn btn-primary" onclick="document.getElementById('video-section').scrollIntoView({behavior: 'smooth'})">Watch Demo</button>
+          <a href="https://github.com/ayanokojix21/SDKGen" target="_blank" class="btn btn-secondary">View on GitHub</a>
+        </div>
+
+        <div class="badge-strip">
+          <span class="badge badge-python">Python 3.11+</span>
+          <span class="badge badge-langgraph">LangGraph</span>
+          <span class="badge badge-gemini">Gemma 4 on GCP</span>
+          <span class="badge badge-fastapi">FastAPI</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- 2. Problem Section -->
+    <section id="problem" class="section-problem scroll-anim">
+      <div class="container">
+        <h2 class="section-title">The Integration Tax</h2>
+        <p class="section-subtitle">Integrating a new API takes 3–7 hours of manual pain.</p>
+        
+        <div class="problem-cards">
+          <div class="card box-shadow red-border">
+            <h3>1. Reading Docs</h3>
+            <p>Endless scrolling through poorly structured, outdated documentation just to find the right endpoint.</p>
+          </div>
+          <div class="card box-shadow blue-border">
+            <h3>2. Boilerplate</h3>
+            <p>Writing the same HTTP client, error handling, and type definitions over and over again.</p>
+          </div>
+          <div class="card box-shadow yellow-border">
+            <h3>3. Debugging</h3>
+            <p>Wasting hours figuring out why an undocumented field is breaking your implementation.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. How It Works Section -->
+    <section id="how-it-works" class="section-how-it-works scroll-anim">
+      <div class="container">
+        <h2 class="section-title">How It Works</h2>
+        <div class="flow-container">
+          <div class="flow-step box-shadow">
+            <strong>1. URL</strong>
+            <span>Provide API Docs</span>
+          </div>
+          <div class="arrow">→</div>
+          <div class="flow-step box-shadow accent-green-bg">
+            <strong>2. Supervisor</strong>
+            <span>Orchestrates Agents</span>
+          </div>
+          <div class="arrow">→</div>
+          <div class="flow-step box-shadow hub-container">
+            <strong>3. The 6 Agents</strong>
+            <span>Research &amp; Build</span>
+          </div>
+          <div class="arrow">→</div>
+          <div class="flow-step box-shadow accent-blue-bg">
+            <strong>4. VS Code</strong>
+            <span>Typed SDK Ready</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. The 6 Agents Section -->
+    <section id="agents" class="section-agents scroll-anim">
+      <div class="container">
+        <h2 class="section-title">Meet The 6 Agents</h2>
+        <div class="agent-grid">
+          <div class="agent-card box-shadow accent-red-border">
+            <div class="agent-icon">👔</div>
+            <h3>Supervisor</h3>
+            <p>Coordinates the multi-agent workflow and handles routing.</p>
+          </div>
+          <div class="agent-card box-shadow accent-blue-border">
+            <div class="agent-icon">🔍</div>
+            <h3>Researcher</h3>
+            <p>Scrapes and understands the API documentation deeply.</p>
+          </div>
+          <div class="agent-card box-shadow accent-green-border">
+            <div class="agent-icon">📐</div>
+            <h3>Architect</h3>
+            <p>Designs the SDK structure, models, and type definitions.</p>
+          </div>
+          <div class="agent-card box-shadow accent-yellow-border">
+            <div class="agent-icon">💻</div>
+            <h3>Engineer</h3>
+            <p>Writes the actual code for the SDK client and methods.</p>
+          </div>
+          <div class="agent-card box-shadow accent-red-border">
+            <div class="agent-icon">🧪</div>
+            <h3>QA Tester</h3>
+            <p>Runs live HTTP tests to verify the generated SDK works.</p>
+          </div>
+          <div class="agent-card box-shadow accent-blue-border">
+            <div class="agent-icon">📦</div>
+            <h3>Packager</h3>
+            <p>Bundles the code, generates READMEs, and prepares distribution.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Tech Stack Section -->
+    <section id="stack" class="section-stack scroll-anim">
+      <div class="container">
+        <h2 class="section-title">Built With</h2>
+        <div class="tag-cloud">
+          <div class="stack-category box-shadow">
+            <strong>Backend</strong>
+            <span>Python, FastAPI, Pydantic</span>
+          </div>
+          <div class="stack-category box-shadow">
+            <strong>AI / Agentic</strong>
+            <span>LangGraph, Gemma 4 on GCP</span>
+          </div>
+          <div class="stack-category box-shadow">
+            <strong>Scraping</strong>
+            <span>Playwright, BeautifulSoup</span>
+          </div>
+          <div class="stack-category box-shadow">
+            <strong>Testing</strong>
+            <span>Pytest, HTTPX</span>
+          </div>
+          <div class="stack-category box-shadow">
+            <strong>Voice</strong>
+            <span>ElevenLabs, WebSockets</span>
+          </div>
+          <div class="stack-category box-shadow">
+            <strong>Frontend / Bridge</strong>
+            <span>Vite, React, Chrome Extension</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Video Section -->
+    <section id="video-section" class="section-video scroll-anim">
+      <div class="container full-width-container">
+        <h2 class="section-title">See SDKGen in Action</h2>
+        <div class="video-placeholder box-shadow">
+          <div class="play-button">▶</div>
+          <div class="video-text">Demo Video Placeholder</div>
+        </div>
+        <p class="video-caption">From raw docs URL to working SDK in under 60 seconds.</p>
+      </div>
+    </section>
+
+    <!-- 7. Demo Targets Section -->
+    <section id="demo" class="section-demo-targets scroll-anim">
+      <div class="container">
+        <h2 class="section-title">Tested On Tough APIs</h2>
+        <div class="target-cards">
+          <div class="card box-shadow accent-blue-border">
+            <h3>Stripe API</h3>
+            <p><strong>Challenge:</strong> Massive API surface, deeply nested types.</p>
+            <p><strong>Result:</strong> Fully typed SDK with complex pagination handled.</p>
+          </div>
+          <div class="card box-shadow accent-yellow-border">
+            <h3>OpenWeatherMap</h3>
+            <p><strong>Challenge:</strong> Inconsistent error formats, varying unit params.</p>
+            <p><strong>Result:</strong> Standardized error handling and unified units.</p>
+          </div>
+          <div class="card box-shadow accent-red-border">
+            <h3>Legacy Finance API</h3>
+            <p><strong>Challenge:</strong> XML responses, terrible documentation.</p>
+            <p><strong>Result:</strong> Seamless XML to JSON parsing, hidden endpoints mapped.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. Setup / Quickstart Section -->
+    <section id="setup" class="section-setup scroll-anim">
+      <div class="container">
+        <h2 class="section-title">Quickstart</h2>
+        <div class="setup-grid">
+          <div class="setup-column">
+            <h3>1. Backend Setup</h3>
+            <pre class="box-shadow"><code>git clone https://github.com/ayanokojix21/SDKGen
+cd SDKGen
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn backend.main:app --reload</code></pre>
+          </div>
+          <div class="setup-column">
+            <h3>2. Chrome Extension</h3>
+            <pre class="box-shadow"><code>cd chrome-extension
+npm install
+npm run build
+# Load unpacked extension in Chrome
+# pointing to /dist</code></pre>
+          </div>
+          <div class="setup-column">
+            <h3>3. VS Code Extension</h3>
+            <pre class="box-shadow"><code>cd vscode-extension
+npm install
+npm run compile
+# Press F5 to start debugging
+# Use Command Palette to run SDKGen</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. Footer Section -->
+    <footer class="site-footer">
+      <div class="container">
+        <p class="tagline">Eliminating the integration tax, one API at a time.</p>
+        <div class="footer-links">
+          <a href="https://github.com/ayanokojix21/SDKGen" target="_blank">GitHub</a>
+          <a href="#">Docs</a>
+          <a href="#" onclick="window.scrollTo({top: 0, behavior: 'smooth'}); return false;">Back to top ↑</a>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
