@@ -65,40 +65,66 @@ async def researcher_node(state: dict) -> dict:
     
     already_crawled = [p["url"] for p in state.get("crawled_pages", [])] if is_recrawl else []
     
-    plan: CrawlPlan = await select_pages_to_crawl(
-        links=state["page_links"],
-        landing_content=state["page_content"],
-        goal=goal,
-        already_crawled=already_crawled
-    )
-    
-    sse_events.append({
-        "type": "researcher_crawl_plan",
-        "selected": [{"url": p.url, "reason": p.reason} for p in plan.crawl_plan],
-        "skipped_count": len(plan.skipped)
-    })
+    # Always index the landing page content first (fast path — no HTTP needed)
+    landing_content = state.get("page_content", "")
+    target_url = state.get("target_url", "")
+    if landing_content and len(landing_content) > 200 and target_url not in already_crawled:
+        sse_events.append({"type": "researcher_scraping", "url": target_url})
+        await chunk_and_index(target_url, landing_content[:15000], collection_name)
+        scraped_this_run = [{"url": target_url, "scraped_at": "now"}]
+        already_crawled.append(target_url)
+        sse_events.append({"type": "researcher_scraped", "url": target_url, "char_count": len(landing_content[:15000])})
+    else:
+        scraped_this_run = []
 
-    # ── Phase 2: Scrape & Index (Vector DB) ─────────────────────────────
-    scraped_this_run = []
-    for p in sorted(plan.crawl_plan, key=lambda x: x.priority):
-        # BUG 24 FIX: Prevent re-scraping and re-indexing of already crawled pages
-        # if the LLM hallucinated them back into the crawl plan
-        if p.url in already_crawled:
-            logger.info("[researcher] Skipping %s — already crawled", p.url)
-            continue
-            
-        sse_events.append({"type": "researcher_scraping", "url": p.url})
+    # Only run select_pages if there are links to choose from
+    if state["page_links"]:
+        plan: CrawlPlan = await select_pages_to_crawl(
+            links=state["page_links"],
+            landing_content=landing_content,
+            goal=goal,
+            already_crawled=already_crawled
+        )
         
-        result = await scrape_web(p.url, state)
-        if "error" in result:
-            continue
+        sse_events.append({
+            "type": "researcher_crawl_plan",
+            "selected": [{"url": p.url, "reason": p.reason} for p in plan.crawl_plan],
+            "skipped_count": len(plan.skipped)
+        })
+
+        # ── Phase 2: Scrape & Index (Vector DB) ─────────────────────────────
+        for p in sorted(plan.crawl_plan, key=lambda x: x.priority):
+            if p.url in already_crawled:
+                logger.info("[researcher] Skipping %s — already crawled", p.url)
+                continue
+                
+            sse_events.append({"type": "researcher_scraping", "url": p.url})
             
-        # Index into MongoDB Atlas via Nomic
-        await chunk_and_index(p.url, result["content"], collection_name)
-        
-        scraped_this_run.append({"url": p.url, "scraped_at": "now"})
-        already_crawled.append(p.url)
-        sse_events.append({"type": "researcher_scraped", "url": p.url, "char_count": result["char_count"]})
+            result = await scrape_web(p.url, state)
+            if "error" in result:
+                continue
+                
+            await chunk_and_index(p.url, result["content"], collection_name)
+            
+            scraped_this_run.append({"url": p.url, "scraped_at": "now"})
+            already_crawled.append(p.url)
+            sse_events.append({"type": "researcher_scraped", "url": p.url, "char_count": result["char_count"]})
+    else:
+        # No page_links — try to scrape the target URL directly via Playwright
+        # (this gets the full rendered page, which may have more content than Chrome injection)
+        logger.info("[researcher] No page_links provided — scraping target URL directly")
+        sse_events.append({
+            "type": "researcher_crawl_plan",
+            "selected": [{"url": target_url, "reason": "Direct scrape — no navigation links available"}],
+            "skipped_count": 0
+        })
+        if target_url not in already_crawled:
+            result = await scrape_web(target_url, state)
+            if "error" not in result:
+                await chunk_and_index(target_url, result["content"], collection_name)
+                scraped_this_run.append({"url": target_url, "scraped_at": "now"})
+                already_crawled.append(target_url)
+                sse_events.append({"type": "researcher_scraped", "url": target_url, "char_count": result["char_count"]})
 
     # ── Optional: Serper Search (if instruction looks like it needs live data) ──
     if supervisor_instruction and re.search(r'\b(latest|search)\b', supervisor_instruction.lower()):
@@ -129,7 +155,7 @@ async def researcher_node(state: dict) -> dict:
     
     # Fall back to landing page content if RAG returned nothing
     if not rag_context:
-        rag_context = f"Landing Page Content:\n{state['page_content'][:5000]}"
+        rag_context = f"Landing Page Content:\n{(state.get('page_content') or '')[:5000]}"
         
     prompt_text = _RESEARCHER_PROMPT_FILE or _FALLBACK_PROMPT
     
@@ -138,7 +164,7 @@ async def researcher_node(state: dict) -> dict:
         prompt_text
         .replace("{target_url}", target_url)
         .replace("{instruction}", supervisor_instruction or "Extract knowledge base")
-        .replace("{existing_knowledge_base}", state.get("research_summary", "None"))
+        .replace("{existing_knowledge_base}", state.get("research_summary") or "None")
     )
     
     summary_msg = (
@@ -159,7 +185,7 @@ async def researcher_node(state: dict) -> dict:
     sse_events.append({
         "type": "researcher_done",
         "endpoint_count": "?",  # Not yet known; architect determines this
-        "page_count": len(scraped_this_run) + len(already_crawled) - len(scraped_this_run), # total crawled
+        "page_count": len(already_crawled),  # total unique pages crawled across all runs
     })
 
     # Propagate token tracking to state (BUG 5 fix)

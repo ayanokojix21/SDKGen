@@ -12,6 +12,13 @@ class Settings:
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 
+    # ── Self-Deployed Gemma 4 (Vertex AI Model Garden) ────────────────────────
+    GEMMA_PROJECT: str = os.getenv("GEMMA_PROJECT", "")
+    GEMMA_LOCATION: str = os.getenv("GEMMA_LOCATION", "europe-west4")
+    GEMMA_ENDPOINT_ID: str = os.getenv("GEMMA_ENDPOINT_ID", "")
+    GEMMA_DEDICATED_DNS: str = os.getenv("GEMMA_DEDICATED_DNS", "")
+    GEMMA_MODEL_NAME: str = os.getenv("GEMMA_MODEL_NAME", "google/gemma-4-31b-it")
+
     # ── Research & RAG ────────────────────────────────────────────────────────
     MONGODB_URI: str = os.getenv("MONGODB_URI", "")
     NOMIC_API_KEY: str = os.getenv("NOMIC_API_KEY", "")
@@ -39,13 +46,19 @@ class Settings:
 
     def validate(self) -> None:
         missing = []
-        if not self.GOOGLE_API_KEY: missing.append("GOOGLE_API_KEY")
+        if not self.GOOGLE_API_KEY and not self.GEMMA_ENDPOINT_ID and not self.GROQ_API_KEY:
+            missing.append("GOOGLE_API_KEY, GEMMA_ENDPOINT_ID, or GROQ_API_KEY")
         if not self.MONGODB_URI: missing.append("MONGODB_URI")
         if not self.E2B_API_KEY: log.warning("E2B_API_KEY missing — sandboxing disabled.")
         if not self.NOMIC_API_KEY: log.warning("NOMIC_API_KEY missing — vector embeddings will fail.")
         if not self.COHERE_API_KEY: log.warning("COHERE_API_KEY missing — reranking disabled.")
         if not self.SERPER_API_KEY or self.SERPER_API_KEY.startswith("your_"):
             log.warning("SERPER_API_KEY missing or placeholder — web search disabled.")
+        if self.GEMMA_ENDPOINT_ID:
+            if not self.GEMMA_DEDICATED_DNS:
+                log.warning("GEMMA_DEDICATED_DNS missing — Gemma endpoint requires dedicated DNS hostname.")
+            else:
+                log.info("Gemma 4 (Vertex AI) configured as primary LLM.")
         if missing:
             raise EnvironmentError(f"Missing required environment variables: {', '.join(missing)}")
 

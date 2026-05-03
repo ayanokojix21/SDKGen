@@ -3,7 +3,7 @@ Live HTTP Request tool for the QA Tester agent.
 Makes real HTTP calls to live API endpoints to verify the generated SDK.
 
 SAFETY RULES ARE HARDCODED — not overridable by any LLM prompt:
-  1. Allowed methods: GET and POST only
+  1. Allowed methods: GET, POST, PUT, PATCH, DELETE
   2. Block private IPs: 127.x, 192.168.x, 10.x, 172.16-31.x
   3. Timeout: 10 seconds hard limit
   4. Max 15 requests per job (enforced by caller via qa_iteration guard)
@@ -57,7 +57,7 @@ async def execute_http_request(
     if method not in _ALLOWED_METHODS:
         return _error_result(
             endpoint_name, method, url,
-            f"Method {method} not allowed — only GET and POST permitted"
+            f"Method {method} not allowed — only GET, POST, PUT, PATCH, DELETE permitted"
         )
 
     # ── Safety: private IP block ──────────────────────────────────────────

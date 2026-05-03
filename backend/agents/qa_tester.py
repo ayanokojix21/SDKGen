@@ -123,7 +123,7 @@ async def qa_tester_node(state: dict) -> dict:
                 "error": res.get("error") or "",
             })
         except Exception as e:
-            res = {"endpoint_name": ep.get("name", "unknown"), "passed": False, "error": str(e), "status_code": 0}
+            res = {"endpoint_name": ep.get("name", "unknown"), "passed": False, "error": str(e), "status_code": 0, "method": method, "url": url}
             http_results.append(res)
             sse_events.append({
                 "type": "qa_test_fail",

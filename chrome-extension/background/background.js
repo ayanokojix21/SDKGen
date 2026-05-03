@@ -145,26 +145,79 @@ function handleWSError(err) {
 
 // ─── SSE management (lives in background, survives popup close) ──────────────
 
+let sseRetryCount = 0;
+const MAX_SSE_RETRIES = 5;
+
 /**
  * Opens an EventSource to the backend SSE stream.
  * Called by the popup via message passing.
  * The background worker keeps listening even if the popup closes.
+ *
+ * IMPORTANT: We first validate the job exists via a HEAD/fetch request
+ * to avoid the EventSource auto-reconnect loop on 404 (stale job IDs).
  */
-function connectSSE(jobId) {
+async function connectSSE(jobId, isRetry = false) {
   // Close any existing stream
   if (activeEventSource) {
     activeEventSource.close();
     activeEventSource = null;
   }
 
+  // Reset retry count on fresh connections (not retries)
+  if (!isRetry) {
+    sseRetryCount = 0;
+  }
+
   activeJobId = jobId;
   jobFinished = false;
-  sseEventBuffer = [];
+  if (!isRetry) {
+    sseEventBuffer = [];
+  }
+
+  // ── Pre-validate: check if backend is reachable before opening EventSource ──
+  // We check /health instead of the SSE endpoint because fetching /generate/stream
+  // creates a subscriber queue in the backend. Aborting that subscriber causes
+  // events emitted during the window to be permanently lost.
+  try {
+    const checkResp = await fetch(`${API_BASE}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!checkResp.ok) {
+      throw new Error(`Health check returned ${checkResp.status}`);
+    }
+  } catch (fetchErr) {
+    if (fetchErr.name === 'TimeoutError' || fetchErr.name === 'AbortError') {
+      // Backend not responding
+    }
+    // Genuine network error — backend probably not running
+    if (sseRetryCount >= MAX_SSE_RETRIES) {
+      console.warn(`[DocsToCode BG] Backend unreachable after ${MAX_SSE_RETRIES} retries — stopping SSE.`);
+      jobFinished = true;
+      activeJobId = null;
+      chrome.storage.session.set({ activeJobId: null });
+      broadcastSSEToPopup({ type: 'error', message: 'Backend unreachable. Please ensure the server is running.' });
+      return;
+    }
+    // Retry with backoff
+    sseRetryCount++;
+    const delay = Math.min(3000 * sseRetryCount, 15000);
+    console.log(`[DocsToCode BG] Backend unreachable, retry ${sseRetryCount}/${MAX_SSE_RETRIES} in ${delay}ms`);
+    setTimeout(() => {
+      if (!jobFinished && activeJobId === jobId) {
+        connectSSE(jobId, true);
+      }
+    }, delay);
+    return;
+  }
 
   console.log(`[DocsToCode BG] Opening SSE for job=${jobId}`);
 
   const es = new EventSource(`${API_BASE}/generate/stream?job_id=${encodeURIComponent(jobId)}`);
   activeEventSource = es;
+
+  // Reset retry count on successful connection
+  sseRetryCount = 0;
 
   es.addEventListener('message', (e) => {
     let data;
@@ -173,6 +226,9 @@ function connectSSE(jobId) {
     } catch {
       return;
     }
+
+    // Reset retry count — we're receiving data
+    sseRetryCount = 0;
 
     // Buffer the event for popup replay
     if (sseEventBuffer.length < MAX_BUFFER_SIZE) {
@@ -206,18 +262,31 @@ function connectSSE(jobId) {
   });
 
   es.addEventListener('error', () => {
-    if (es.readyState === EventSource.CLOSED) {
-      console.log(`[DocsToCode BG] SSE connection closed for job=${jobId}`);
-      // If the job wasn't finished, try to reconnect after a delay
-      if (!jobFinished && activeJobId === jobId) {
-        console.log(`[DocsToCode BG] Attempting SSE reconnect in 3s for job=${jobId}`);
-        setTimeout(() => {
-          if (!jobFinished && activeJobId === jobId) {
-            connectSSE(jobId);
-          }
-        }, 3000);
-      }
+    // Close immediately to prevent EventSource auto-reconnect
+    es.close();
+    activeEventSource = null;
+
+    if (jobFinished || activeJobId !== jobId) {
+      return; // Job was already handled — do nothing
     }
+
+    sseRetryCount++;
+    if (sseRetryCount > MAX_SSE_RETRIES) {
+      console.warn(`[DocsToCode BG] SSE failed after ${MAX_SSE_RETRIES} retries — giving up for job=${jobId}`);
+      jobFinished = true;
+      activeJobId = null;
+      chrome.storage.session.set({ activeJobId: null });
+      broadcastSSEToPopup({ type: 'error', message: 'Lost connection to backend. Please try again.' });
+      return;
+    }
+
+    const delay = Math.min(3000 * sseRetryCount, 15000);
+    console.log(`[DocsToCode BG] SSE error, retry ${sseRetryCount}/${MAX_SSE_RETRIES} in ${delay}ms for job=${jobId}`);
+    setTimeout(() => {
+      if (!jobFinished && activeJobId === jobId) {
+        connectSSE(jobId, true);
+      }
+    }, delay);
   });
 
   // Persist active job

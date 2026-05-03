@@ -135,8 +135,8 @@ async def start_generation(request: GenerateRequest):
 
     The client should immediately open GET /generate/stream?job_id=<id>
     """
-    if not settings.GOOGLE_API_KEY:
-        raise HTTPException(status_code=503, detail="GOOGLE_API_KEY not configured.")
+    if not settings.GOOGLE_API_KEY and not settings.GEMMA_ENDPOINT_ID and not settings.GROQ_API_KEY:
+        raise HTTPException(status_code=503, detail="No LLM configured. Set GEMMA_ENDPOINT_ID, GROQ_API_KEY, or GOOGLE_API_KEY.")
 
     language = request.language.lower()
     if language not in ("python", "typescript"):

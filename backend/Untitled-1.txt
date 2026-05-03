@@ -1,0 +1,206 @@
+[Blog](https://elevenlabs.io/blog)
+[Help Center](https://help.elevenlabs.io/hc/en-us)
+[API Pricing](https://elevenlabs.io/pricing/api)
+[Sign up](https://elevenlabs.io/app/sign-up)
+[Overview](https://elevenlabs.io/docs/overview/intro)
+[ElevenCreative](https://elevenlabs.io/docs/eleven-creative/overview)
+[ElevenAgents](https://elevenlabs.io/docs/eleven-agents/overview)
+[ElevenAPI](https://elevenlabs.io/docs/eleven-api/quickstart)
+[API reference](https://elevenlabs.io/docs/api-reference/introduction)
+[Changelog](https://elevenlabs.io/docs/changelog)
+[.fa-secondary{opacity:.4}Overview](https://elevenlabs.io/docs/overview/intro)
+[.fa-secondary{opacity:.4}ElevenCreative](https://elevenlabs.io/docs/eleven-creative/overview)
+[.fa-secondary{opacity:.4}ElevenAgents](https://elevenlabs.io/docs/eleven-agents/overview)
+[.fa-secondary{opacity:.4}ElevenAPI](https://elevenlabs.io/docs/eleven-api/quickstart)
+[.fa-secondary{opacity:.4}API reference](https://elevenlabs.io/docs/api-reference/introduction)
+[.fa-secondary{opacity:.4}Changelog](https://elevenlabs.io/docs/changelog)
+- API reference[Introduction](https://elevenlabs.io/docs/api-reference/introduction)[Authentication](https://elevenlabs.io/docs/api-reference/authentication)[Streaming](https://elevenlabs.io/docs/api-reference/streaming)
+- [Introduction](https://elevenlabs.io/docs/api-reference/introduction)
+- [Authentication](https://elevenlabs.io/docs/api-reference/authentication)
+- [Streaming](https://elevenlabs.io/docs/api-reference/streaming)
+- ElevenAgentsAgentsConversationsUsersToolsKnowledge BaseTestsPhone NumbersWidgetWorkspaceSIP TrunkTwilioWhatsAppBatch CallingLLMMCPAnalyticsEnvironment Variables
+- Agents
+- Conversations
+- Users
+- Tools
+- Knowledge Base
+- Tests
+- Phone Numbers
+- Widget
+- Workspace
+- SIP Trunk
+- Twilio
+- WhatsApp
+- Batch Calling
+- LLM
+- MCP
+- Analytics
+- Environment Variables
+- ElevenAPIText to Speech[WSSWebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-stream-input)[WSSMulti-Context WebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-multi-stream-input)[POSTCreate speech](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)[POSTCreate speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps)[STREAMStream speech](https://elevenlabs.io/docs/api-reference/text-to-speech/stream)[STREAMStream speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/stream-with-timestamps)Speech to TextMusicVoicesText to DialogueVoice ChangerVoice DesignSound EffectsAudio IsolationDubbingForced AlignmentPronunciation DictionariesAudio Native
+- Text to Speech[WSSWebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-stream-input)[WSSMulti-Context WebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-multi-stream-input)[POSTCreate speech](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)[POSTCreate speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps)[STREAMStream speech](https://elevenlabs.io/docs/api-reference/text-to-speech/stream)[STREAMStream speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/stream-with-timestamps)
+- [WSSWebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-stream-input)
+- [WSSMulti-Context WebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-multi-stream-input)
+- [POSTCreate speech](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)
+- [POSTCreate speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps)
+- [STREAMStream speech](https://elevenlabs.io/docs/api-reference/text-to-speech/stream)
+- [STREAMStream speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/stream-with-timestamps)
+- Speech to Text
+- Music
+- Voices
+- Text to Dialogue
+- Voice Changer
+- Voice Design
+- Sound Effects
+- Audio Isolation
+- Dubbing
+- Forced Alignment
+- Pronunciation Dictionaries
+- Audio Native
+- ElevenCreativeStudio
+- Studio
+- Core ResourcesHistoryModelsTokens
+- History
+- Models
+- Tokens
+- WorkspaceUsageUserService AccountsWorkspaceWebhooks
+- Usage
+- User
+- Service Accounts
+- Workspace
+- Webhooks
+- LegacyVoicesKnowledge BaseDubbing
+- Voices
+- Knowledge Base
+- Dubbing
+
+- [Introduction](https://elevenlabs.io/docs/api-reference/introduction)
+- [Authentication](https://elevenlabs.io/docs/api-reference/authentication)
+- [Streaming](https://elevenlabs.io/docs/api-reference/streaming)
+[Introduction](https://elevenlabs.io/docs/api-reference/introduction)
+[Authentication](https://elevenlabs.io/docs/api-reference/authentication)
+[Streaming](https://elevenlabs.io/docs/api-reference/streaming)
+- Agents
+- Conversations
+- Users
+- Tools
+- Knowledge Base
+- Tests
+- Phone Numbers
+- Widget
+- Workspace
+- SIP Trunk
+- Twilio
+- WhatsApp
+- Batch Calling
+- LLM
+- MCP
+- Analytics
+- Environment Variables
+- Text to Speech[WSSWebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-stream-input)[WSSMulti-Context WebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-multi-stream-input)[POSTCreate speech](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)[POSTCreate speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps)[STREAMStream speech](https://elevenlabs.io/docs/api-reference/text-to-speech/stream)[STREAMStream speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/stream-with-timestamps)
+- [WSSWebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-stream-input)
+- [WSSMulti-Context WebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-multi-stream-input)
+- [POSTCreate speech](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)
+- [POSTCreate speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps)
+- [STREAMStream speech](https://elevenlabs.io/docs/api-reference/text-to-speech/stream)
+- [STREAMStream speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/stream-with-timestamps)
+- Speech to Text
+- Music
+- Voices
+- Text to Dialogue
+- Voice Changer
+- Voice Design
+- Sound Effects
+- Audio Isolation
+- Dubbing
+- Forced Alignment
+- Pronunciation Dictionaries
+- Audio Native
+- [WSSWebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-stream-input)
+- [WSSMulti-Context WebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-multi-stream-input)
+- [POSTCreate speech](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)
+- [POSTCreate speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps)
+- [STREAMStream speech](https://elevenlabs.io/docs/api-reference/text-to-speech/stream)
+- [STREAMStream speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/stream-with-timestamps)
+[WSSWebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-stream-input)
+[WSSMulti-Context WebSocket](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-multi-stream-input)
+[POSTCreate speech](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)
+[POSTCreate speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps)
+[STREAMStream speech](https://elevenlabs.io/docs/api-reference/text-to-speech/stream)
+[STREAMStream speech with timing](https://elevenlabs.io/docs/api-reference/text-to-speech/stream-with-timestamps)
+- Studio
+- History
+- Models
+- Tokens
+- Usage
+- User
+- Service Accounts
+- Workspace
+- Webhooks
+- Voices
+- Knowledge Base
+- Dubbing
+[ElevenAPI](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-stream-input)
+[Text to Speech](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-stream-input)
+
+# Create speech
+
+```
+[data-radix-scroll-area-viewport]{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;}[data-radix-scroll-area-viewport]::-webkit-scrollbar{display:none}1curl -X POST "https://api.elevenlabs.io/v1/text-to-speech/JBFqnCBsd6RMkjVDRZzb?output_format=mp3_44100_128" \2 -H "xi-api-key: xi-api-key" \3 -H "Content-Type: application/json" \4 -d '{5 "text": "The first move is what sets everything in motion.",6 "model_id": "eleven_multilingual_v2"7}'
+```
+
+### Path parameters
+ID of the voice to be used. Use the [Get voices](https://elevenlabs.io/docs/api-reference/voices/search) endpoint list all the available voices.
+
+### Query parameters
+```
+true
+```
+
+When enable_logging is set to false zero retention mode will be used for the request. This will mean history features are unavailable for this request, including request stitching. Zero retention mode may only be used by enterprise customers.
+
+```
+mp3_44100_128
+```
+
+### Request
+```
+eleven_multilingual_v2
+```
+
+Identifier of the model that will be used, you can query them using GET /v1/models. The model needs to have support for text to speech, you can check this using the can_do_text_to_speech property.
+Language code (ISO 639-1) used to enforce a language for the model and text normalization. If the model does not support provided language code, an error will be returned.
+A list of pronunciation dictionary locators (id, version_id) to be applied to the text. They will be applied in order. You may have up to 3 locators per request
+A list of request_id of the samples that were generated before this generation. Can be used to improve the speech’s continuity when splitting up a large task into multiple requests. The results will be best when the same model is used across the generations. In case both previous_text and previous_request_ids is send, previous_text will be ignored. A maximum of 3 request_ids can be send.
+A list of request_id of the samples that come after this generation. next_request_ids is especially useful for maintaining the speech’s continuity when regenerating a sample that has had some audio quality issues. For example, if you have generated 3 speech clips, and you want to improve clip 2, passing the request id of clip 3 as a next_request_id (and that of clip 1 as a previous_request_id) will help maintain natural flow in the combined speech. The results will be best when the same model is used across the generations. In case both next_text and next_request_ids is send, next_text will be ignored. A maximum of 3 request_ids can be send.
+
+```
+auto
+```
+
+This parameter controls text normalization with three modes: ‘auto’, ‘on’, and ‘off’. When set to ‘auto’, the system will automatically decide whether to apply text normalization (e.g., spelling out numbers). With ‘on’, text normalization will always be applied, while with ‘off’, it will be skipped.
+
+```
+false
+```
+
+This parameter controls language text normalization. This helps with proper pronunciation of text in some supported languages. WARNING: This parameter can heavily increase the latency of the request. Currently only supported for Japanese.
+
+```
+false
+```
+
+### Errors
+[Previous](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-multi-stream-input)
+[Create speech with timingNext](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps)
+
+#### Create speech with timing
+[Built with](https://buildwithfern.com/?utm_campaign=buildWith&utm_medium=docs&utm_source=elevenlabs.io)
+[Login](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)
+[Login](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)
+[Blog](https://elevenlabs.io/blog)
+[Help Center](https://help.elevenlabs.io/hc/en-us)
+[API Pricing](https://elevenlabs.io/pricing/api)
+[Sign up](https://elevenlabs.io/app/sign-up)
+You can turn on latency optimizations at some cost of quality. The best possible final latency varies by model. Possible values: 0 - default mode (no latency optimizations) 1 - normal latency optimizations (about 50% of possible latency improvement of option 3) 2 - strong latency optimizations (about 75% of possible latency improvement of option 3) 3 - max latency optimizations 4 - max latency optimizations, but also with text normalizer turned off for even more latency savings (best latency, but can mispronounce eg numbers and dates).
+Defaults to None.
+Output format of the generated audio. Formatted as codec_sample_rate_bitrate. So an mp3 with 22.05kHz sample rate at 32kbs is represented as mp3_22050_32. MP3 with 192kbps bitrate requires you to be subscribed to Creator tier or above. PCM and WAV formats with 44.1kHz sample rate requires you to be subscribed to Pro tier or above. Note that the μ-law format (sometimes written mu-law, often approximated as u-law) is commonly used for Twilio audio inputs.
