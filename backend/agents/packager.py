@@ -131,7 +131,9 @@ async def packager_node(state: dict) -> dict:
         language=language,
         job_id=state.get("job_id", ""),
         sdk_client_code=client_code,
-        schema_json=json.dumps(api_schema)
+        schema_json=json.dumps(api_schema),
+        target_url=state.get("target_url", ""),
+        page_content=state.get("page_content", "")
     )
 
     # ── Build SSE events ──────────────────────────────────────────────────────
@@ -170,6 +172,7 @@ async def packager_node(state: dict) -> dict:
             "files": len(final_files),
             "language": language,
             "api_name": api_name,
+            "assistant_agent_id": assistant_agent_id,
         },
         "agent_id": assistant_agent_id,
     })

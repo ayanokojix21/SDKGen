@@ -19,7 +19,9 @@ async def create_doc_reader_agent(
     language: str, 
     job_id: str,
     sdk_client_code: str = "",
-    schema_json: str = ""
+    schema_json: str = "",
+    target_url: str = "",
+    page_content: str = ""
 ) -> Optional[str]:
     """
     Creates an ElevenLabs Conversational Agent configured as a Doc Reader
@@ -39,7 +41,9 @@ async def create_doc_reader_agent(
             api_name, 
             language, 
             sdk_client_code,
-            schema_json
+            schema_json,
+            target_url,
+            page_content
         )
         log.info("[elevenlabs_agent] Created conversational agent with ID: %s", agent_id)
         return agent_id
@@ -51,7 +55,9 @@ def _sync_create_and_configure_agent(
     api_name: str, 
     language: str, 
     sdk_client_code: str,
-    schema_json: str
+    schema_json: str,
+    target_url: str,
+    page_content: str
 ) -> str:
     """Synchronous implementation to create agent and upload KB."""
     client = _get_client()
@@ -59,12 +65,7 @@ def _sync_create_and_configure_agent(
     prompt = f"""
     You are a highly technical and helpful Conversational Doc Reader assistant.
     You are an expert on the {api_name} API and its newly generated {language} SDK.
-
-    The user is currently viewing a documentation page:
-    - Page URL: {{{{page_url}}}}
-    - Page Title: {{{{page_title}}}}
-    - Page Content: {{{{page_content}}}}
-
+    {"The user is currently reading this API documentation page: " + target_url if target_url else ""}
     Your goal is to help developers understand how to use the SDK, how to authenticate,
     and what endpoints are available.
     Keep your responses concise, friendly, and practical.
@@ -114,5 +115,15 @@ def _sync_create_and_configure_agent(
             )
         except Exception as e:
             log.warning(f"Failed to upload schema to KB: {e}")
+
+    if page_content:
+        try:
+            client.conversational_ai.knowledge_base.text.create(
+                agent_id=agent_id,
+                name="original_page_docs",
+                text=page_content
+            )
+        except Exception as e:
+            log.warning(f"Failed to upload page content to KB: {e}")
 
     return agent_id

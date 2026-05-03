@@ -76,6 +76,7 @@ const backendBanner   = document.getElementById('backend-banner');
 const backendCmd      = document.getElementById('backend-cmd');
 const cmdCopied       = document.getElementById('cmd-copied');
 const pasteBtn        = document.getElementById('paste-btn');
+const passContextBtn  = document.getElementById('pass-context-btn');
 
 // ─── Initialise ───────────────────────────────────────────────────────────────
 async function init() {
@@ -281,6 +282,39 @@ resumeDismiss.addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'STOP_SSE' });
   activeJobId = null;
 });
+
+// ─── Pass Context ─────────────────────────────────────────────────────────────
+if (passContextBtn) {
+  passContextBtn.addEventListener('click', async () => {
+    passContextBtn.disabled = true;
+    passContextBtn.textContent = '🎙️ Passing...';
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => document.body.innerText.substring(0, 5000)
+      });
+      const pageContent = results[0]?.result || '';
+      const convaiWidget = document.querySelector('elevenlabs-convai');
+      
+      if (convaiWidget) {
+        // Use setAttribute to pass dynamic variables since we can't reliably call methods on the Web Component immediately
+        convaiWidget.setAttribute('dynamic-variables', JSON.stringify({
+          target_url: tab.url,
+          page_content: pageContent
+        }));
+        appendLine('🎙️ Voice Assistant updated with specific page context!', 'var(--c-architect)');
+      } else {
+        appendLine('✕ Voice Assistant widget not found.', 'var(--c-qa-fail)');
+      }
+    } catch (err) {
+      appendLine(`✕ Failed to pass context: ${err.message}`, 'var(--c-qa-fail)');
+    } finally {
+      passContextBtn.textContent = '🎙️ Pass Context';
+      passContextBtn.disabled = false;
+    }
+  });
+}
 
 // ─── Generate button ──────────────────────────────────────────────────────────
 generateBtn.addEventListener('click', handleGenerate);
@@ -598,15 +632,12 @@ function onComplete(jobId, data) {
   // Wire VS Code button
   openVSCodeBtn.onclick = () => window.dtcBridge.openInVSCode(jobId);
 
-  // Swap ConvAI widget to the job-specific agent if available
-  const agentId = data.agent_id || data.summary?.agent_id;
-  if (agentId) {
-    const widget = document.querySelector('elevenlabs-convai');
-    if (widget) {
-      widget.setAttribute('agent-id', agentId);
-      // Re-inject page context for the new agent
-      injectPageContextIntoWidget();
-      appendLine(`🤖 AI Assistant updated for ${data.summary?.api_name || 'this SDK'}`, 'var(--c-complete)');
+  // Update Conversational Agent context if provided by the backend
+  if (data.summary && data.summary.assistant_agent_id) {
+    const convaiWidget = document.querySelector('elevenlabs-convai');
+    if (convaiWidget) {
+      convaiWidget.setAttribute('agent-id', data.summary.assistant_agent_id);
+      appendLine('🎙️ Voice Assistant updated with specific page context!', 'var(--c-architect)');
     }
   }
 
