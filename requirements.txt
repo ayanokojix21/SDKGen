@@ -30,6 +30,9 @@ black>=24.0.0
 # ── SSE Streaming ─────────────────────────────────────────────────
 sse-starlette>=2.0.0
 
+# ── External Services ─────────────────────────────────────────────
+elevenlabs>=1.0.0
+
 # ── New Enterprise Stack ──────────────────────────────────────────
 langchain-nomic>=0.1.0
 langchain-cohere>=0.3.0

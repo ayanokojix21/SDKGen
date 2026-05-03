@@ -93,6 +93,9 @@ async function init() {
 
   // 5. Check Microphone permission for ElevenLabs
   await checkMicPermission();
+
+  // 6. Inject page context into the ElevenLabs ConvAI widget
+  await injectPageContextIntoWidget();
 }
 
 // ─── URL auto-fill ────────────────────────────────────────────────────────────
@@ -595,6 +598,18 @@ function onComplete(jobId, data) {
   // Wire VS Code button
   openVSCodeBtn.onclick = () => window.dtcBridge.openInVSCode(jobId);
 
+  // Swap ConvAI widget to the job-specific agent if available
+  const agentId = data.agent_id || data.summary?.agent_id;
+  if (agentId) {
+    const widget = document.querySelector('elevenlabs-convai');
+    if (widget) {
+      widget.setAttribute('agent-id', agentId);
+      // Re-inject page context for the new agent
+      injectPageContextIntoWidget();
+      appendLine(`🤖 AI Assistant updated for ${data.summary?.api_name || 'this SDK'}`, 'var(--c-complete)');
+    }
+  }
+
   // Auto-trigger the selected output action
   if (selectedOutput === 'zip') {
     appendLine('⏳ Downloading ZIP automatically...', 'var(--text-secondary)');
@@ -670,6 +685,37 @@ function showMicBanner() {
 function hideMicBanner() {
   const banner = document.getElementById('mic-banner');
   if (banner) banner.remove();
+}
+
+// ─── Page context injection for ConvAI widget ─────────────────────────────────
+
+/**
+ * Extracts the current page's content and injects it into the
+ * ElevenLabs ConvAI widget as dynamic variables so the voice
+ * agent has page context when the user starts a conversation.
+ */
+async function injectPageContextIntoWidget() {
+  const widget = document.querySelector('elevenlabs-convai');
+  if (!widget) return;
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || tab.url?.startsWith('chrome://')) return;
+
+    const response = await chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_CONTENT' });
+
+    const dynamicVars = {
+      page_url: response?.url || tab.url || '',
+      page_title: response?.title || tab.title || '',
+      page_content: (response?.content || '').slice(0, 5000),
+    };
+
+    widget.setAttribute('dynamic-variables', JSON.stringify(dynamicVars));
+    console.log('[DocsToCode] Injected page context into ConvAI widget');
+  } catch (err) {
+    // Content script may not be injected on this page — silent fail
+    console.warn('[DocsToCode] Could not inject page context:', err.message);
+  }
 }
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────

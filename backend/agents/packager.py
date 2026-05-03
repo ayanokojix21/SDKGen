@@ -171,6 +171,7 @@ async def packager_node(state: dict) -> dict:
             "language": language,
             "api_name": api_name,
         },
+        "agent_id": assistant_agent_id,
     })
 
     # Propagate token tracking to state for consistency
