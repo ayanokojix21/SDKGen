@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Turn any API documentation URL into a fully-typed, live-tested SDK.</strong><br>
-  <i>Built in 24 hours for the 2025 Hackathon</i>
+   
 </p>
 
 <p align="center">
