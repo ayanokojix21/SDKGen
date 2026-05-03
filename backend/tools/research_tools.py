@@ -16,7 +16,7 @@ from pymongo import MongoClient
 from langchain_mongodb import MongoDBAtlasVectorSearch
 from langchain_nomic import NomicEmbeddings
 from langchain_cohere import CohereRerank
-from langchain.retrievers import ContextualCompressionRetriever
+from langchain_classic.retrievers import ContextualCompressionRetriever
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.utilities import GoogleSerperAPIWrapper
 from langchain_core.documents import Document

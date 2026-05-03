@@ -70,32 +70,24 @@ async function tryRestoreCompletedJob(
   language: string,
   _context: vscode.ExtensionContext
 ): Promise<boolean> {
+  // Try to fetch files directly. 200 = ready, 202 = still running, 404 = not found.
+  let files: Record<string, string>;
   try {
-    const resp = await fetch(`${BACKEND_BASE}/download/${encodeURIComponent(jobId)}`, {
-      method: 'HEAD',
-    });
-
-    // 202 = still running, 404 = not found, 200 = files ready
+    const resp = await fetch(`${BACKEND_BASE}/job/${encodeURIComponent(jobId)}/files`);
     if (resp.status !== 200) {
-      return false;
+      return false; // Still running or not found — fall back to SSE
     }
+    files = await resp.json() as Record<string, string>;
   } catch {
     return false;
   }
 
-  // Files are ready — fetch the state directly from the backend
+  // Files are ready — restore state
   const panel = AgentPanel.get(jobId);
   panel?.postEvent({ type: 'supervisor', routing_to: 'packager', reasoning: 'Restoring completed job…' });
 
-  try {
-    const resp = await fetch(`${BACKEND_BASE}/job/${encodeURIComponent(jobId)}/files`);
-    if (!resp.ok) {
-      // Endpoint may not exist — fall back to SSE
-      return false;
-    }
-    const files = await resp.json() as Record<string, string>;
-    const fw = fileWriters.get(jobId);
-    const opener = openers.get(jobId);
+  const fw = fileWriters.get(jobId);
+  const opener = openers.get(jobId);
 
     for (const [filename, content] of Object.entries(files)) {
       panel?.postEvent({ type: 'file_ready', filename });
@@ -110,9 +102,6 @@ async function tryRestoreCompletedJob(
     refreshHistory();
     cleanup(jobId);
     return true;
-  } catch {
-    return false;
-  }
 }
 
 /**

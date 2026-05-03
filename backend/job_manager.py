@@ -38,8 +38,8 @@ from backend.graph.state import create_initial_state
 log = logging.getLogger(__name__)
 
 # ── Per-job SSE queue registry ─────────────────────────────────────────────────
-# { job_id: asyncio.Queue }
-_queues: dict[str, asyncio.Queue] = {}
+# { job_id: [asyncio.Queue, asyncio.Queue, ...] }
+_job_queues: dict[str, list[asyncio.Queue]] = {}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ def create_job(
 ) -> tuple[str, dict]:
     """
     Creates a new job_id, initialises the state dict, and registers a fresh
-    asyncio.Queue for SSE streaming.
+    list for SSE subscriber queues.
 
     Returns (job_id, initial_state).
     """
@@ -67,8 +67,8 @@ def create_job(
         page_links=page_links,
     )
 
-    # Register SSE queue
-    _queues[job_id] = asyncio.Queue()
+    # Register SSE queue list
+    _job_queues[job_id] = []
 
     # Write initial checkpoint file for offline inspection
     _write_checkpoint_file(job_id, {"status": "started", "target_url": target_url,
@@ -78,35 +78,45 @@ def create_job(
     return job_id, initial_state
 
 
-def get_queue(job_id: str) -> Optional[asyncio.Queue]:
-    """Returns the SSE queue for job_id, or None if the job doesn't exist."""
-    return _queues.get(job_id)
+def subscribe(job_id: str) -> Optional[asyncio.Queue]:
+    """Creates and returns a new SSE queue for a subscriber, or None if the job doesn't exist."""
+    if job_id not in _job_queues:
+        return None
+    q = asyncio.Queue()
+    _job_queues[job_id].append(q)
+    return q
 
 
-def remove_queue(job_id: str) -> None:
-    """Remove the SSE queue on client disconnect — prevents memory leaks."""
-    removed = _queues.pop(job_id, None)
-    if removed:
-        log.info("[job_manager] removed queue for job=%s", job_id)
+def unsubscribe(job_id: str, q: asyncio.Queue) -> None:
+    """Removes a subscriber's queue on client disconnect."""
+    if job_id in _job_queues and q in _job_queues[job_id]:
+        _job_queues[job_id].remove(q)
+        log.info("[job_manager] removed subscriber queue for job=%s", job_id)
+
+
+def remove_all_queues(job_id: str) -> None:
+    """Remove all SSE queues for a job — prevents memory leaks."""
+    removed = _job_queues.pop(job_id, None)
+    if removed is not None:
+        log.info("[job_manager] removed all queues for job=%s", job_id)
 
 
 async def put_event(job_id: str, event: dict) -> None:
     """
-    Safely puts one SSE event dict onto the job queue.
-    No-op if the job queue no longer exists (client disconnected before graph finished).
+    Safely puts one SSE event dict onto all active subscriber queues for the job.
     """
-    q = _queues.get(job_id)
-    if q is not None:
+    queues = _job_queues.get(job_id, [])
+    for q in queues:
         await q.put(event)
 
 
 async def put_sentinel(job_id: str) -> None:
-    """Signal end-of-stream to the SSE generator."""
+    """Signal end-of-stream to all SSE generators."""
     await put_event(job_id, {"type": "__done__"})
 
 
 async def put_error(job_id: str, message: str) -> None:
-    """Signal a fatal error to the SSE generator."""
+    """Signal a fatal error to all SSE generators."""
     await put_event(job_id, {"type": "error", "message": message})
     await put_sentinel(job_id)
 
